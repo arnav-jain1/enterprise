@@ -16,10 +16,21 @@ def get_angle(frame, u, o, v):
 
     return theta_degrees
 
+
 def calculate_elbow_angles(frame):
     return {"right_elbow" : get_angle(frame, 16, 14, 12), "left_elbow" : get_angle(frame, 15, 13, 11)}
 
 
-with np.load('../barbell_npz/barbell_0.npz') as data:
-    frame = data["arr_0"][0]
-    print(calculate_elbow_angles(frame))
+def calculate_shoulder_angles(frame):
+    return {"right_shoulder" : get_angle(frame, 14, 12, 24), "left_shoulder" : get_angle(frame, 13, 11, 23)}
+
+def calculate_torso_angles(frame):
+    return {"right_torso" : get_angle(frame, 12, 24, 26), "left_torso" : get_angle(frame, 11, 23, 25)}
+
+def calculate_wrist_angles(frame):
+    return {"right_wrist" : get_angle(frame, 20, 16, 14), "left_wrist" : get_angle(frame, 19, 15, 13)}
+
+
+# with np.load('../barbell_npz/barbell_0.npz') as data
+#     frame = data["arr_0"][0]
+#     print(calculate_elbow_angles(frame))
