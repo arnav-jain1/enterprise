@@ -15,3 +15,11 @@ def get_angle(frame, u, o, v):
     theta_degrees = theta_radians * (180 / np.pi)
 
     return theta_degrees
+
+
+def main():
+    with np.load("../barbell_npz/barbell_0.npz") as data:
+        print(data['angles'])
+
+if __name__ == '__main__':
+    main()

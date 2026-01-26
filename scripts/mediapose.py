@@ -7,11 +7,31 @@ import os
 from frame import Frame
 
 
+def frames_to_numpy(frames):
+    landmarks_list = []
+    angles_list = []
+    velocity_list = []
+    acceleration_list = []
 
-def compress_landmarks(video_path, pose, mp_pose, mp_drawing):
+    for frame in frames:
+        landmarks_list.append(frame.landmarks)
+        angles_list.append(frame.get_angles())
+        velocity_list.append([frame.left_elbow_velocity, frame.right_elbow_velocity])
+        acceleration_list.append([frame.left_elbow_acceleration, frame.right_elbow_acceleration])
+    
+    landmarks = np.stack(landmarks_list).astype(np.float32)
+    angles = np.stack(angles_list).astype(np.float32)
+    velocities = np.stack(velocity_list).astype(np.float32)
+    accelerations = np.stack(acceleration_list).astype(np.float32)
+
+    return landmarks, angles, velocities, accelerations
+    
+
+def compress_landmarks(video_path, pose, mp_pose, mp_drawing, output_path):
 
     cap = cv2.VideoCapture(video_path)
 
+    fps = cap.get(cv2.CAP_PROP_FPS)
     frame_number = 0
     pose_array = []
 
@@ -24,6 +44,8 @@ def compress_landmarks(video_path, pose, mp_pose, mp_drawing):
 
         result = pose.process(frame_rgb)
         landmarks = np.zeros((33, 4), dtype=np.float32)
+        if not result.pose_landmarks:
+            continue
         if result.pose_landmarks:
 
             for idx, landmark in enumerate(result.pose_landmarks.landmark):
@@ -32,10 +54,18 @@ def compress_landmarks(video_path, pose, mp_pose, mp_drawing):
             mp_drawing.draw_landmarks(frame, result.pose_landmarks, mp_pose.POSE_CONNECTIONS)
 
         frame = Frame(landmarks)
-        frame.get_angles()
-        pose_array.append(frame)
+        frame.calculate_angles()
 
-        cv2.imshow('MediaPipe Pose', frame.landmarks)
+        if frame_number == 0: prev = None
+        else: prev = pose_array[frame_number - 1]
+
+        frame.calculate_angular_velocity(prev, fps)
+        frame.calculate_angular_acceleration(prev, fps)
+
+        if 0 < frame_number < 5:
+            frame.sanity_check(prev, fps)
+
+        pose_array.append(frame)
 
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
@@ -44,7 +74,9 @@ def compress_landmarks(video_path, pose, mp_pose, mp_drawing):
     cap.release()
     cv2.destroyAllWindows()
 
-    # np.savez_compressed(f"{output_path}.npz", pose_array)
+    landmarks, angles, velocities, accelerations = frames_to_numpy(pose_array)
+
+    np.savez_compressed(f"{output_path}.npz", landmarks = landmarks, angles = angles, velocities = velocities, accelerations = accelerations)
 
     return pose_array
 
@@ -58,12 +90,10 @@ def main():
     for item in directory_path.iterdir():
 
         video_path = str(item)
-        output_path = f"/barbell_npz/barbell_{count}"
+        output_path = f"../barbell_npz/barbell_{count}"
 
-        vid = compress_landmarks(video_path, pose, mp_pose, mp_drawing)
+        vid = compress_landmarks(video_path, pose, mp_pose, mp_drawing, output_path)
         
-        for frame in vid:
-            print(frame)
         count += 1
 
 
