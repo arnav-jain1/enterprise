@@ -1,20 +1,57 @@
 import numpy as np
+from scipy.signal import savgol_filter
+from matplotlib import pyplot as plt
 
-def get_angle(frame, u, o, v):
-    u = frame[u] - frame[o]
-    v = frame[v] - frame[o]
+def get_angle(frame, U, O, V):
+    u = frame[U][:2] - frame[O][:2]
+    v = frame[V][:2] - frame[O][:2]
 
-    u_magnitude = np.linalg.norm(u)
-    v_magnitude = np.linalg.norm(v)
+    cross = u[0]*v[1] - u[1]*v[0]
+    dot   = u[0]*v[0] + u[1]*v[1]
 
-    cos_theta = np.dot(u, v) / (u_magnitude * v_magnitude)
-    cos_theta_clip = np.clip(cos_theta, -1.0, 1.0)
+    return np.degrees(np.arctan2(cross, dot))
 
-    theta_radians = np.arccos(cos_theta_clip)
+def get_motion_angle(prev, curr, U, O):
+    u = prev[U][:2] - prev[O][:2]
+    v = curr[U][:2] - curr[O][:2]
 
-    theta_degrees = theta_radians * (180 / np.pi)
+    cross = u[0]*v[1] - u[1]*v[0]
+    dot   = u[0]*v[0] + u[1]*v[1]
 
-    return theta_degrees
+    return np.degrees(np.arctan2(cross, dot))
+
+def get_shoulder_angle_array(frames):
+    angles = []
+    for frame in frames:
+        angles.append(frame.get_angles()[8])
+    return angles
+
+def check_savgol_filter(array):
+    fig, ax = plt.subplots(2, 2, figsize=(10, 4))
+    ax[0, 0].plot(array, label='Shoulder Angle')
+    ax[0, 0].set_title('Shoulder Angle Over Time')
+    ax[0, 0].set_xlabel('Frame')
+    ax[0, 0].set_ylabel('Angle (degrees)')
+        
+    ax[1, 0].plot(savgol_filter(array, 5, 2), label='Default', color='orange')
+    ax[1, 0].set_title('Default')
+    ax[1, 0].set_xlabel('Frame')
+    ax[1, 0].set_ylabel('Angle (degrees)')
+
+    ax[0, 1].plot(savgol_filter(array, 7, 2), label='Increased Window', color='orange')
+    ax[0, 1].set_title('Increased Window')
+    ax[0, 1].set_xlabel('Frame')
+    ax[0, 1].set_ylabel('Angle (degrees)')
+
+    ax[1, 1].plot(savgol_filter(array, 5, 4), label='Increased Order', color='orange')
+    ax[1, 1].set_title('Increased Order')
+    ax[1, 1].set_xlabel('Frame')
+    ax[1, 1].set_ylabel('Angle (degrees)')
+
+    plt.tight_layout()
+
+    return fig, ax
+    
 
 
 def main():

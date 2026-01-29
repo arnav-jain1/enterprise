@@ -5,6 +5,9 @@ import numpy as np
 from pathlib import Path
 import os
 from frame import Frame
+from calculate_angles import check_savgol_filter, get_shoulder_angle_array
+from matplotlib import pyplot as plt
+from scipy.signal import savgol_filter
 
 
 def frames_to_numpy(frames):
@@ -61,9 +64,9 @@ def compress_landmarks(video_path, pose, mp_pose, mp_drawing, output_path):
 
         frame.calculate_angular_velocity(prev, fps)
         frame.calculate_angular_acceleration(prev, fps)
-
-        if 0 < frame_number < 5:
-            frame.sanity_check(prev, fps)
+        frame.get_shoulder_motion_angle(prev)
+        # if 0 < frame_number < 5:
+        #     frame.sanity_check(prev, fps)
 
         pose_array.append(frame)
 
@@ -94,6 +97,11 @@ def main():
 
         vid = compress_landmarks(video_path, pose, mp_pose, mp_drawing, output_path)
         
+        fig, ax = check_savgol_filter(get_shoulder_angle_array(vid))
+
+        plt.show()
+
+
         count += 1
 
 

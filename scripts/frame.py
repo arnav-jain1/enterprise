@@ -1,4 +1,4 @@
-from calculate_angles import get_angle
+from calculate_angles import get_angle, get_motion_angle
 import numpy as np
 
 class Frame:
@@ -27,6 +27,13 @@ class Frame:
         self.right_elbow_acceleration = None
         self.left_elbow_acceleration = None
 
+        self.theta_right_shoulder_motion = None
+        self.theta_left_shoulder_motion = None
+
+        self.right_shoulder_motion_velocity = None
+        self.left_shoulder_motion_velocity = None
+
+
     def calculate_elbow_angles(self):
         self.theta_right_elbow = get_angle(self.landmarks, 16, 14, 12)
         self.theta_left_elbow = get_angle(self.landmarks, 15, 13, 11)
@@ -51,16 +58,18 @@ class Frame:
 
     def get_angles(self):
         return np.array([
-                    self.theta_right_elbow,
-                    self.theta_left_elbow,
-                    self.theta_right_shoulder,
-                    self.theta_left_shoulder,
-                    self.theta_right_torso,
-                    self.theta_left_torso,
-                    self.theta_right_wrist,
-                    self.theta_left_wrist,
-                    self.theta_hip,
-                    self.theta_knee
+                    self.theta_right_elbow, #0
+                    self.theta_left_elbow, #1
+                    self.theta_right_shoulder, #2
+                    self.theta_left_shoulder, #3
+                    self.theta_right_torso, #4
+                    self.theta_left_torso, #5
+                    self.theta_right_wrist, #6
+                    self.theta_left_wrist, #7
+                    self.theta_right_shoulder_motion, #8
+                    self.theta_left_shoulder_motion, #9
+                    self.theta_hip, #10
+                    self.theta_knee #11
                 ], dtype=np.float32)
     
     def calculate_angular_velocity(self, prev, fps):
@@ -81,6 +90,14 @@ class Frame:
         self.left_elbow_acceleration = (self.left_elbow_velocity - prev.left_elbow_velocity) * fps
         self.right_elbow_acceleration = (self.right_elbow_velocity - prev.right_elbow_velocity) * fps
     
+
+
+    def get_shoulder_motion_angle(self, prev):
+        if prev == None:
+            return
+        self.theta_right_shoulder_motion = get_motion_angle(self.landmarks, prev.landmarks, 14, 12)
+        self.theta_left_shoulder_motion = get_motion_angle(self.landmarks, prev.landmarks, 13, 11)
+
     def sanity_check(self, prev, fps):
         print(self.left_elbow_velocity, prev.theta_left_elbow, fps)
 
