@@ -7,7 +7,7 @@ scripts/__pycache__/
 scripts/extract/__pycache__/
 
 # Virtual environment
-mp-env/
+.mp-env/
 
 # Project folders to ignore
 barbell/

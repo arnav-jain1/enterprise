@@ -7,6 +7,7 @@ class Frame:
         self.velocity = {}
         self.acceleration = {}
         self.displacement = {}
+        self.symmetry = {}
 
     def __str__(self):
         def fmt(val):
