@@ -1,8 +1,8 @@
 from geometry import joint_angle, point_displacement, segment_motion_angle
-from base_extractor import BaseExtractor
+from extractions.base_extractor import BaseExtractor
 
 
-class BicepCurlExtractor(BaseException):
+class BicepCurlExtractor(BaseExtractor):
     def compute(self, frame, prev_frame, fps):
         # ---- 1. Angles ----
         frame.angles = self.calculate_angles(frame.landmarks)

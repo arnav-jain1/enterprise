@@ -27,10 +27,6 @@ def npz_to_dataframe(npz_path):
     # Concatenate on time axis
     return pd.concat(dfs, axis=1)
 
-
-df = npz_to_dataframe("../barbell_npz/barbell_0.npz")
-print(df.head())
-
 def frames_to_numpy(frames):
     landmarks_list = []
     angles_list = []

@@ -8,11 +8,15 @@ from frame import Frame
 from geometry import check_savgol_filter, get_shoulder_angle_array
 from matplotlib import pyplot as plt
 from extractions.bicep_curl import BicepCurlExtractor
+from extractions.bench_press import BenchPressExtractor
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 from npz_to_pandas import frames_to_numpy
 
 def video_to_npz(video_path, output_path):
+
+    extractor_types = {"barbell biceps curl": BicepCurlExtractor(), "bench press": BenchPressExtractor()}
+
     # ---- MediaPipe PoseLandmarker (VIDEO mode) ----
     base_options = python.BaseOptions(
         model_asset_path="models/pose_landmarker_lite.task"
@@ -30,7 +34,17 @@ def video_to_npz(video_path, output_path):
     cap = cv2.VideoCapture(video_path)
     fps = cap.get(cv2.CAP_PROP_FPS)
 
-    extractor = BicepCurlExtractor()
+    extractor = None
+
+    for e_t in extractor_types:
+        if e_t in video_path:
+            extractor = extractor_types[e_t]
+            print("Found it", e_t)
+            break
+        else: print("Not it", e_t)
+    if extractor == None:
+        exit()
+
     pose_array = []
     frame_number = 0
 
@@ -85,3 +99,4 @@ def video_to_npz(video_path, output_path):
     )
 
     return pose_array
+

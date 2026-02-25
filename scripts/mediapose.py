@@ -1,6 +1,6 @@
 from pathlib import Path
-from scripts.pipelines.video_to_npz import video_to_npz
-from scripts.geometry import check_savgol_filter, get_shoulder_angle_array
+from pipelines.video_to_npz import video_to_npz
+from geometry import check_savgol_filter, get_shoulder_angle_array
 from matplotlib import pyplot as plt
 
 def main():
@@ -9,7 +9,7 @@ def main():
 
     for item in directory_path.iterdir():
         video_path = str(item)
-        output_path = f"../barbell_npz/barbell_{count}"
+        output_path = f"../barbell_npz/bench_press_{count}"
 
         frames = video_to_npz(
             video_path,
