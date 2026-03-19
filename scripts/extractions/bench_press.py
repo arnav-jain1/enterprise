@@ -1,5 +1,4 @@
 from extractions.base_extractor import BaseExtractor
-from frame import Frame
 
 '''
 Left/right elbow angle

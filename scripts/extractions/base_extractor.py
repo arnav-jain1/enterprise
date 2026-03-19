@@ -5,6 +5,8 @@ from geometry import (
     point_displacement,
     segment_motion_angle,
 )
+import numpy as np
+from frame import Frame
 
 
 class BaseExtractor(ABC):
@@ -48,7 +50,7 @@ class BaseExtractor(ABC):
         Must be implemented by subclasses.
         """
         pass
-    
+
     # ============================================================
     # PIPELINE (shared across all extractors)
     # ============================================================
@@ -192,3 +194,176 @@ class BaseExtractor(ABC):
         )
 
         return {name: value} if name else value
+    
+    # ============================================================
+# TEMPORAL / SEQUENCE FEATURES
+# ============================================================
+
+def detect_reps(self, angle_series):
+    """
+    Detect repetitions based on local minima in the angle signal.
+
+    For bicep curls:
+        - A rep peak occurs at the smallest elbow angle (top of curl)
+
+    Parameters
+    ----------
+    angle_series : list[float] or np.array
+
+    Returns
+    -------
+    list[int]
+        Indices of detected rep peaks
+    """
+
+    reps = []
+
+    for i in range(1, len(angle_series) - 1):
+        if angle_series[i - 1] > angle_series[i] < angle_series[i + 1]:
+            reps.append(i)
+
+    return reps
+
+
+def get_movement_phase(self, velocity):
+    """
+    Classify movement phase based on velocity sign.
+
+    Parameters
+    ----------
+    velocity : float
+
+    Returns
+    -------
+    str
+        "concentric"  -> lifting phase
+        "eccentric"   -> lowering phase
+        "static"      -> near zero movement
+    """
+
+    if velocity > 0:
+        return "concentric"
+    elif velocity < 0:
+        return "eccentric"
+    return "static"
+
+
+# ============================================================
+# RANGE OF MOTION (ROM)
+# ============================================================
+
+def compute_rom(self, angle_series):
+    """
+    Compute range of motion for a joint.
+
+    Parameters
+    ----------
+    angle_series : list[float] or np.array
+
+    Returns
+    -------
+    float
+        Max angle - Min angle
+    """
+
+    if len(angle_series) == 0:
+        return 0.0
+
+    return max(angle_series) - min(angle_series)
+
+
+# ============================================================
+# STABILITY / CONTROL METRICS
+# ============================================================
+
+def compute_stability(self, displacement_series):
+    """
+    Measure movement stability using standard deviation.
+
+    High variance = unstable / excessive movement
+    Low variance  = controlled / stable movement
+
+    Parameters
+    ----------
+    displacement_series : list[float] or np.array
+
+    Returns
+    -------
+    float
+    """
+
+    if len(displacement_series) == 0:
+        return 0.0
+
+    return np.std(displacement_series)
+
+
+def compute_smoothness(self, acceleration_series):
+    """
+    Estimate smoothness using jerk (change in acceleration).
+
+    Lower jerk = smoother motion
+    Higher jerk = jerky / uncontrolled motion
+
+    Parameters
+    ----------
+    acceleration_series : list[float] or np.array
+
+    Returns
+    -------
+    float
+        Mean absolute jerk
+    """
+
+    if len(acceleration_series) < 2:
+        return 0.0
+
+    jerk = np.diff(acceleration_series)
+    return np.mean(np.abs(jerk))
+
+
+# ============================================================
+# FEATURE AGGREGATION (FRAME → WORKOUT)
+# ============================================================
+
+def aggregate_features(self, frames):
+    """
+    Aggregate frame-level features into workout-level metrics.
+
+    This converts raw signals into meaningful summaries.
+
+    Parameters
+    ----------
+    frames : list[Frame]
+
+    Returns
+    -------
+    dict
+        High-level workout metrics
+    """
+
+    if len(frames) == 0:
+        return {}
+
+    # ----------------------------------------
+    # Extract time-series
+    # ----------------------------------------
+    elbow_angles = [f.angles.get("right_elbow", 0.0) for f in frames]
+    velocities = [f.velocity.get("right_elbow", 0.0) for f in frames]
+    accelerations = [f.acceleration.get("right_elbow", 0.0) for f in frames]
+    displacements = [f.displacement.get("right_elbow", 0.0) for f in frames]
+
+    # ----------------------------------------
+    # Compute metrics
+    # ----------------------------------------
+    reps = self.detect_reps(elbow_angles)
+
+    metrics = {
+        "rep_count": len(reps),
+        "range_of_motion": self.compute_rom(elbow_angles),
+        "avg_velocity": float(np.mean(velocities)) if velocities else 0.0,
+        "stability": self.compute_stability(displacements),
+        "smoothness": self.compute_smoothness(accelerations),
+    }
+
+    return metrics

@@ -21,3 +21,76 @@ class BicepCurlExtractor(BaseExtractor):
         displacement = {}
         displacement.update(self.calculate_elbow_displacement(prev_landmarks, curr_landmarks))
         return displacement
+    
+    def calculate_additional_features(self, frame):
+        """
+        Compute bicep-curl-specific features.
+        """
+
+        features = {}
+
+        # ----------------------------------------
+        # Elbow dominance (main signal)
+        # ----------------------------------------
+        features["elbow_flexion"] = frame.angles.get("right_elbow", 0.0)
+
+        # ----------------------------------------
+        # Shoulder compensation (cheating)
+        # ----------------------------------------
+        features["shoulder_movement"] = abs(
+            frame.motion.get("right_shoulder", 0.0)
+        )
+
+        # ----------------------------------------
+        # Elbow drift (should stay fixed)
+        # ----------------------------------------
+        features["elbow_stability"] = frame.displacement.get("right_elbow", 0.0)
+
+        # ----------------------------------------
+        # Torso lean (cheating)
+        # ----------------------------------------
+        features["torso_angle"] = frame.angles.get("right_torso", 0.0)
+
+        frame.features.update(features)
+
+        return features
+
+
+    def calculate_phase(self, frame):
+        """
+        Determine movement phase based on elbow velocity.
+        """
+
+        vel = frame.velocity.get("right_elbow", 0.0)
+
+        if vel > 0:
+            phase = "concentric"   # lifting
+        elif vel < 0:
+            phase = "eccentric"    # lowering
+        else:
+            phase = "static"
+
+        frame.phase["right_elbow"] = phase
+        return phase
+
+    def evaluate_form(self, frame):
+        """
+        Evaluate form quality for a single frame.
+        """
+
+        issues = []
+
+        # Shoulder cheating
+        if abs(frame.motion.get("right_shoulder", 0.0)) > 15:
+            issues.append("shoulder_swing")
+
+        # Elbow drifting
+        if frame.displacement.get("right_elbow", 0.0) > 0.05:
+            issues.append("elbow_moving")
+
+        # Torso leaning
+        if abs(frame.angles.get("right_torso", 0.0)) > 20:
+            issues.append("torso_lean")
+
+        frame.features["form_issues"] = issues
+        return issues

@@ -1,19 +1,12 @@
-from unittest import result
-
 import cv2
 import mediapipe as mp
-import csv
 import numpy as np
-from pathlib import Path
-import os
 from frame import Frame
-from matplotlib import pyplot as plt
 from extractions.bicep_curl import BicepCurlExtractor
 from extractions.bench_press import BenchPressExtractor
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 from npz_to_pandas import frames_to_numpy
-from geometry import joint_angle, point_displacement, segment_motion_angle, get_all_angles_arrays
 
 
 # -------------------------------------------------------------
@@ -113,21 +106,16 @@ def process_video(video_path, detector, extractor):
             )
 
             if not frames:
-                # always accept first valid frame
                 landmarks = curr_landmarks
-
             else:
                 prev = frames[-1].landmarks
 
-                # smooth interpolation (no freezing)
-                landmarks = 0.85 * prev + 0.15 * curr_landmarks
-
-        else:
-            if frames:
-                # fallback ONLY if we already have frames
-                landmarks = frames[-1].landmarks.copy()
-            else:
-                continue
+                if is_low_vis:
+                    # trust previous more
+                    landmarks = 0.95 * prev + 0.05 * curr_landmarks
+                else:
+                    # normal smoothing
+                    landmarks = 0.85 * prev + 0.15 * curr_landmarks
 
         # -------------------------------------------------
         # Create Frame object
@@ -167,6 +155,9 @@ def process_video(video_path, detector, extractor):
         frame.displacement = extractor.calculate_displacement(prev_landmarks, landmarks)
 
         frames.append(frame)
+        frame = Frame(landmarks)
+        frame.frame_index = frame_number
+        frame.timestamp = timestamp_ms
         frame_number += 1
 
         if cv2.waitKey(1) & 0xFF == ord("q"):
@@ -184,9 +175,14 @@ def process_video(video_path, detector, extractor):
 def compute_motion_metrics(frames, extractor, fps):
     extractor.calculate_frame_velocities(frames, fps)
     extractor.calculate_frame_accelerations(frames, fps)
+    
+    for frame in frames:
+        extractor.calculate_additional_features(frame)
+        extractor.calculate_phase(frame)
+        extractor.evaluate_form(frame)
+        print(frame)
 
     return frames
-
 
 # -------------------------------------------------------------
 # Save frames to compressed NPZ
