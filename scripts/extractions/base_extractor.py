@@ -1,118 +1,148 @@
-from abc import abstractmethod
-from geometry import joint_angle, point_displacement, segment_motion_angle
+from abc import ABC, abstractmethod
+from geometry import (
+    get_all_angles_arrays,
+    joint_angle,
+    point_displacement,
+    segment_motion_angle,
+)
 
 
-class BaseExtractor:
+class BaseExtractor(ABC):
     """
     Base class for exercise feature extraction.
 
-    Each exercise extractor (e.g. BicepCurlExtractor, BenchPressExtractor)
-    should inherit from this class and implement the mandatory methods.
+    Provides a shared feature pipeline (angles → velocity → acceleration)
+    and reusable biomechanical utilities.
+
+    Subclasses should ONLY implement:
+        - calculate_angles()
     """
 
     # ============================================================
-    # MANDATORY METHODS (must be implemented by subclasses)
+    # REQUIRED (exercise-specific)
     # ============================================================
-
-    @abstractmethod
-    def compute(self, frame, prev_frame, fps):
-        """
-        Main per-frame computation method for the extractor.
-        """
-        pass
 
     @abstractmethod
     def calculate_angles(self, landmarks):
         """
-        Calculates joint angles for the current frame.
+        Compute joint angles for a single frame.
+
+        Must be implemented by subclasses.
         """
         pass
 
     @abstractmethod
-    def calculate_velocities(self, frames, fps):
+    def calculate_motion(self, prev_landmarks, curr_landmarks):
         """
-        Calculates velocities of features between frames.
+        Compute motion angles for a single frame.
+
+        Must be implemented by subclasses.
         """
         pass
-
+    
     @abstractmethod
-    def calculate_accelerations(self, curr_vel, prev_vel, fps):
+    def calculate_displacement(self, prev_landmarks, curr_landmarks):
         """
-        Calculates accelerations from velocities.
+        Compute landmark displacement for a single frame.
+
+        Must be implemented by subclasses.
         """
         pass
+    
+    # ============================================================
+    # PIPELINE (shared across all extractors)
+    # ============================================================
 
+    def calculate_frame_velocities(self, frames, fps):
+        """
+        Compute angular velocities for all frames using
+        filtered angle time-series.
+        """
+        filtered_angles = get_all_angles_arrays(frames)
+
+        for i in range(len(frames)):
+            prev = i - 1 if i > 0 else None
+
+            for key in filtered_angles:
+                if prev is None:
+                    frames[i].velocity[key] = 0.0
+                else:
+                    frames[i].velocity[key] = self._scalar_velocity(
+                        filtered_angles[key][i],
+                        filtered_angles[key][prev],
+                        fps
+                    )
+
+    def calculate_frame_accelerations(self, frames, fps):
+        """
+        Compute angular accelerations from velocity signals.
+        """
+        for i in range(len(frames)):
+            prev = i - 1 if i > 0 else None
+
+            for key in frames[i].velocity:
+                if prev is None:
+                    frames[i].acceleration[key] = 0.0
+                else:
+                    frames[i].acceleration[key] = self._scalar_acceleration(
+                        frames[i].velocity[key],
+                        frames[prev].velocity[key],
+                        fps
+                    )
+
+    # ============================================================
+    # LOW-LEVEL NUMERIC HELPERS (private)
+    # ============================================================
+
+    def _scalar_velocity(self, curr, prev, fps):
+        return (curr - prev) * fps
+
+    def _scalar_acceleration(self, curr_vel, prev_vel, fps):
+        return (curr_vel - prev_vel) * fps
 
     # ============================================================
     # LANDMARK POSITION FEATURES
     # ============================================================
 
     def get_wrist_positions(self, landmarks):
-        """
-        Extract vertical wrist positions.
-
-        Useful for detecting upward/downward movement in exercises.
-        """
         return {
             "right_wrist_y": landmarks[16][1],
             "left_wrist_y":  landmarks[15][1],
         }
 
-    # Future expansion example
-    # def get_elbow_positions(self, landmarks):
-    #     ...
-
-
     # ============================================================
-    # JOINT ANGLE CALCULATIONS
+    # JOINT ANGLES (reusable building blocks)
     # ============================================================
 
     def calculate_elbow_angles(self, landmarks):
-        """
-        Compute elbow joint angles.
-        """
         return {
             "right_elbow": joint_angle(landmarks, 16, 14, 12),
             "left_elbow":  joint_angle(landmarks, 15, 13, 11),
         }
 
     def calculate_shoulder_angles(self, landmarks):
-        """
-        Compute shoulder joint angles.
-        """
         return {
             "right_shoulder": joint_angle(landmarks, 14, 12, 24),
             "left_shoulder":  joint_angle(landmarks, 13, 11, 23),
         }
 
     def calculate_torso_angles(self, landmarks):
-        """
-        Compute torso angles relative to hips.
-        """
         return {
             "right_torso": joint_angle(landmarks, 12, 24, 26),
             "left_torso":  joint_angle(landmarks, 11, 23, 25),
         }
 
     def calculate_wrist_angles(self, landmarks):
-        """
-        Compute wrist joint angles.
-        """
         return {
             "right_wrist": joint_angle(landmarks, 20, 16, 14),
             "left_wrist":  joint_angle(landmarks, 19, 15, 13),
         }
 
-
     # ============================================================
-    # SEGMENT MOTION FEATURES
+    # SEGMENT MOTION
     # ============================================================
 
     def get_shoulder_motion_angle(self, prev_landmarks, curr_landmarks):
-        """
-        Measures rotational movement of shoulder segments between frames.
-        """
-
         if prev_landmarks is None:
             return {
                 "right_shoulder": 0.0,
@@ -128,45 +158,11 @@ class BaseExtractor:
             ),
         }
 
-
     # ============================================================
-    # VELOCITY CALCULATIONS
-    # ============================================================
-
-    def calculate_velocity(self, curr, prev, fps):
-        """
-        Compute scalar velocity.
-        """
-        if prev is None:
-            return {key: 0.0 for key in curr}
-        return (curr - prev) * fps
-
-
-    def calculate_velocities(self, curr, prev, fps):
-        """
-        Compute velocities for a dictionary of values.
-        """
-
-        if prev is None:
-            return {key: 0.0 for key in curr}
-
-        velocities = {}
-
-        for key in curr:
-            velocities[key] = (curr[key] - prev[key]) * fps
-
-        return velocities
-
-
-    # ============================================================
-    # DISPLACEMENT FEATURES
+    # DISPLACEMENT
     # ============================================================
 
     def calculate_elbow_displacement(self, prev_landmarks, curr_landmarks):
-        """
-        Euclidean displacement of elbows between frames.
-        """
-
         if prev_landmarks is None:
             return {
                 "right_elbow": 0.0,
@@ -174,35 +170,12 @@ class BaseExtractor:
             }
 
         return {
-            "right_elbow": point_displacement(
-                prev_landmarks, curr_landmarks, 14
-            ),
-            "left_elbow": point_displacement(
-                prev_landmarks, curr_landmarks, 13
-            ),
+            "right_elbow": point_displacement(prev_landmarks, curr_landmarks, 14),
+            "left_elbow":  point_displacement(prev_landmarks, curr_landmarks, 13),
         }
 
-
     # ============================================================
-    # ACCELERATION CALCULATIONS
-    # ============================================================
-
-    def calculate_acceleration(self, curr_vel, prev_vel, fps):
-        """
-        Compute accelerations from velocity dictionaries.
-        """
-
-        if prev_vel is None:
-            return {key: 0.0 for key in curr_vel}
-
-        return {
-            key: (curr_vel[key] - prev_vel[key]) * fps
-            for key in curr_vel
-        }
-
-
-    # ============================================================
-    # SYMMETRY FEATURES
+    # SYMMETRY
     # ============================================================
 
     def calculate_symmetry(
@@ -213,24 +186,9 @@ class BaseExtractor:
         coord_index=1,
         name=None
     ):
-        """
-        Measure symmetry between two body landmarks.
-
-        Parameters
-        ----------
-        right_index : int
-        left_index : int
-        coord_index : int
-            0 = x coordinate
-            1 = y coordinate
-        """
-
         value = abs(
             landmarks[right_index][coord_index]
             - landmarks[left_index][coord_index]
         )
 
-        if name is not None:
-            return {name: value}
-
-        return value
+        return {name: value} if name else value

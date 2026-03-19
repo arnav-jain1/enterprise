@@ -1,3 +1,5 @@
+from unittest import result
+
 import cv2
 import mediapipe as mp
 import csv
@@ -63,6 +65,7 @@ def select_extractor(video_path):
 # -------------------------------------------------------------
 # Process video and extract frames with raw angles
 # -------------------------------------------------------------
+
 def process_video(video_path, detector, extractor):
     """
     Runs pose detection on the video and extracts
@@ -73,6 +76,7 @@ def process_video(video_path, detector, extractor):
     fps = cap.get(cv2.CAP_PROP_FPS)
 
     frames = []
+    frame_number = 0
 
     while cap.isOpened():
 
@@ -80,10 +84,7 @@ def process_video(video_path, detector, extractor):
         if not ret:
             break
 
-        # Convert frame to RGB
         frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-
-        # Timestamp required for VIDEO mode
         timestamp_ms = int(cap.get(cv2.CAP_PROP_POS_MSEC))
 
         mp_image = mp.Image(
@@ -91,32 +92,83 @@ def process_video(video_path, detector, extractor):
             data=frame_rgb
         )
 
-        # Run pose detection
         result = detector.detect_for_video(mp_image, timestamp_ms)
 
-        # Skip frame if no pose detected
-        if not result.pose_landmarks:
-            continue
-
         # -------------------------------------------------
-        # Convert landmarks → numpy array (33,4)
+        # Robust landmark handling (FIXED)
         # -------------------------------------------------
-        landmarks = np.zeros((33, 4), dtype=np.float32)
+        if result.pose_landmarks and len(result.pose_landmarks) > 0:
 
-        for i, lm in enumerate(result.pose_landmarks[0]):
-            landmarks[i] = [lm.x, lm.y, lm.z, lm.visibility]
+            curr_landmarks = np.zeros((33, 4), dtype=np.float32)
+
+            for i, lm in enumerate(result.pose_landmarks[0]):
+                curr_landmarks[i] = [lm.x, lm.y, lm.z, lm.visibility]
+
+            RIGHT_ELBOW = 14
+            RIGHT_WRIST = 16
+
+            is_low_vis = (
+                curr_landmarks[RIGHT_ELBOW][3] < 0.2 or
+                curr_landmarks[RIGHT_WRIST][3] < 0.2
+            )
+
+            if not frames:
+                # always accept first valid frame
+                landmarks = curr_landmarks
+
+            else:
+                prev = frames[-1].landmarks
+
+                # smooth interpolation (no freezing)
+                landmarks = 0.85 * prev + 0.15 * curr_landmarks
+
+        else:
+            if frames:
+                # fallback ONLY if we already have frames
+                landmarks = frames[-1].landmarks.copy()
+            else:
+                continue
 
         # -------------------------------------------------
         # Create Frame object
         # -------------------------------------------------
         frame = Frame(landmarks)
 
-        # Calculate raw angles
+        prev_landmarks = frames[-1].landmarks if frames else None
+
+        # -------------------------------------------------
+        # Angles
+        # -------------------------------------------------
         frame.angles = extractor.calculate_angles(landmarks)
 
-        frames.append(frame)
+        # -------------------------------------------------
+        # Soft angle smoothing (no freezing)
+        # -------------------------------------------------
+        MAX_ANGLE_DELTA = 90
 
-        # Optional quit key
+        if frames:
+            prev_angles = frames[-1].angles
+
+            for key in frame.angles:
+                delta = abs(frame.angles[key] - prev_angles[key])
+
+                if delta > MAX_ANGLE_DELTA:
+                    frame.angles[key] = (
+                        0.7 * prev_angles[key] + 0.3 * frame.angles[key]
+                    )
+
+                # clamp to valid range
+                frame.angles[key] = max(0, min(180, frame.angles[key]))
+
+        # -------------------------------------------------
+        # Motion + displacement
+        # -------------------------------------------------
+        frame.motion = extractor.calculate_motion(prev_landmarks, landmarks)
+        frame.displacement = extractor.calculate_displacement(prev_landmarks, landmarks)
+
+        frames.append(frame)
+        frame_number += 1
+
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
 
@@ -130,7 +182,9 @@ def process_video(video_path, detector, extractor):
 # Calculate Frame Motion Metrics
 # -------------------------------------------------------------
 def compute_motion_metrics(frames, extractor, fps):
-    extractor.calculate_velocities(frames, fps)
+    extractor.calculate_frame_velocities(frames, fps)
+    extractor.calculate_frame_accelerations(frames, fps)
+
     return frames
 
 

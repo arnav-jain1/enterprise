@@ -9,7 +9,7 @@ def main():
 
     for item in directory_path.iterdir():
         video_path = str(item)
-        output_path = f"../barbell_npz/biceps_{count}"
+        output_path = f"../barbell_npz/bench press_{count}"
 
         frames = video_to_npz(
             video_path,
