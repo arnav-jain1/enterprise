@@ -83,14 +83,19 @@ class BicepCurlExtractor(BaseExtractor):
         # Shoulder cheating
         if abs(frame.motion.get("right_shoulder", 0.0)) > 15:
             issues.append("shoulder_swing")
+        else:
+            issues.append("shoulder_stable")
 
         # Elbow drifting
         if frame.displacement.get("right_elbow", 0.0) > 0.05:
             issues.append("elbow_moving")
-
+        else:
+            issues.append("elbow_stable")
         # Torso leaning
         if abs(frame.angles.get("right_torso", 0.0)) > 20:
             issues.append("torso_lean")
+        else:            
+            issues.append("torso_stable")
 
         frame.features["form_issues"] = issues
         return issues
