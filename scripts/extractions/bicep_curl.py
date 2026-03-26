@@ -1,12 +1,11 @@
-from geometry import joint_angle, point_displacement, segment_motion_angle, get_all_angles_arrays
-from extractions.base_extractor import BaseExtractor
+from scripts.extractions.base_extractor import BaseExtractor
 
 
 class BicepCurlExtractor(BaseExtractor):
 
     def calculate_angles(self, landmarks):
         angles = {}
-        angles.update(self.calculate_elbow_angles(landmarks))
+        angles.update(self.calculate_elbow_angles(landmarks, False))
         angles.update(self.calculate_shoulder_angles(landmarks))
         angles.update(self.calculate_torso_angles(landmarks))
         angles.update(self.calculate_wrist_angles(landmarks))
@@ -87,7 +86,7 @@ class BicepCurlExtractor(BaseExtractor):
             issues.append("shoulder_stable")
 
         # Elbow drifting
-        if frame.displacement.get("right_elbow", 0.0) > 0.05:
+        if frame.displacement.get("right_elbow", 0.0) > 0.005:
             issues.append("elbow_moving")
         else:
             issues.append("elbow_stable")

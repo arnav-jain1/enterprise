@@ -13,3 +13,5 @@ mp-env/
 # Project folders to ignore
 barbell/
 barbell_npz/
+raw_data/
+npz/

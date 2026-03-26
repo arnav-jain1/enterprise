@@ -1,12 +1,12 @@
 from abc import ABC, abstractmethod
-from geometry import (
+from scripts.geometry import (
     get_all_angles_arrays,
     joint_angle,
     point_displacement,
     segment_motion_angle,
 )
 import numpy as np
-from frame import Frame
+from scripts.frame import Frame
 
 
 class BaseExtractor(ABC):
@@ -116,7 +116,13 @@ class BaseExtractor(ABC):
     # JOINT ANGLES (reusable building blocks)
     # ============================================================
 
-    def calculate_elbow_angles(self, landmarks):
+    def calculate_elbow_angles(self, landmarks, abs_bool):
+        if abs_bool:
+            return {
+            "right_elbow": abs(joint_angle(landmarks, 16, 14, 12)),
+            "left_elbow":  abs(joint_angle(landmarks, 15, 13, 11)),
+        }
+
         return {
             "right_elbow": joint_angle(landmarks, 16, 14, 12),
             "left_elbow":  joint_angle(landmarks, 15, 13, 11),

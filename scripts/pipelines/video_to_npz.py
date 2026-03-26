@@ -1,24 +1,27 @@
 import cv2
+from pathlib import Path
 import mediapipe as mp
 import numpy as np
-from frame import Frame
-from extractions.bicep_curl import BicepCurlExtractor
-from extractions.bench_press import BenchPressExtractor
+from scripts.frame import Frame
+from scripts.extractions.bicep_curl import BicepCurlExtractor
+from scripts.extractions.bench_press import BenchPressExtractor
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
-from npz_to_pandas import frames_to_numpy
+from scripts.pipelines.npz_to_pandas import frames_to_numpy
 
 
 # -------------------------------------------------------------
 # Create MediaPipe PoseLandmarker (VIDEO mode)
 # -------------------------------------------------------------
 def create_pose_detector():
-    """
-    Initializes MediaPipe PoseLandmarker for video processing.
-    """
+    base_dir = Path(__file__).resolve().parents[1]  
+    # video_to_npz.py is in scripts/pipelines/
+    # parents[1] → scripts/
+
+    model_path = base_dir / "models" / "pose_landmarker_lite.task"
 
     base_options = python.BaseOptions(
-        model_asset_path="models/pose_landmarker_lite.task"
+        model_asset_path=str(model_path)
     )
 
     options = vision.PoseLandmarkerOptions(
@@ -99,11 +102,35 @@ def process_video(video_path, detector, extractor):
 
             RIGHT_ELBOW = 14
             RIGHT_WRIST = 16
+            LEFT_ELBOW = 13
+            LEFT_WRIST = 15
 
             is_low_vis = (
-                curr_landmarks[RIGHT_ELBOW][3] < 0.2 or
-                curr_landmarks[RIGHT_WRIST][3] < 0.2
+                curr_landmarks[RIGHT_ELBOW][3] < 0.4 or
+                curr_landmarks[RIGHT_WRIST][3] < 0.4 or
+                curr_landmarks[LEFT_ELBOW][3] < 0.4 or
+                curr_landmarks[LEFT_WRIST][3] < 0.4
             )
+
+            if not frames:
+                landmarks = curr_landmarks.copy()
+            else:
+                prev = frames[-1].landmarks
+                landmarks = curr_landmarks.copy()
+
+                # -----------------------------
+                # RIGHT arm fallback
+                # -----------------------------
+                if curr_landmarks[RIGHT_ELBOW][3] < 0.2 or curr_landmarks[RIGHT_WRIST][3] < 0.2:
+                    landmarks[14] = prev[14]  # elbow
+                    landmarks[16] = prev[16]  # wrist
+
+                # -----------------------------
+                # LEFT arm fallback (THIS FIXES YOUR BUG)
+                # -----------------------------
+                if curr_landmarks[LEFT_ELBOW][3] < 0.2 or curr_landmarks[LEFT_WRIST][3] < 0.2:
+                    landmarks[13] = prev[13]  # elbow
+                    landmarks[15] = prev[15]  # wrist
 
             if not frames:
                 landmarks = curr_landmarks
@@ -118,7 +145,7 @@ def process_video(video_path, detector, extractor):
                     landmarks = 0.85 * prev + 0.15 * curr_landmarks
 
         # -------------------------------------------------
-        # Create Frame object
+        # Create Frame
         # -------------------------------------------------
         frame = Frame(landmarks)
 
@@ -130,7 +157,7 @@ def process_video(video_path, detector, extractor):
         frame.angles = extractor.calculate_angles(landmarks)
 
         # -------------------------------------------------
-        # Soft angle smoothing (no freezing)
+        # Soft angle smoothing
         # -------------------------------------------------
         MAX_ANGLE_DELTA = 90
 
@@ -145,7 +172,6 @@ def process_video(video_path, detector, extractor):
                         0.7 * prev_angles[key] + 0.3 * frame.angles[key]
                     )
 
-                # clamp to valid range
                 frame.angles[key] = max(0, min(180, frame.angles[key]))
 
         # -------------------------------------------------
@@ -154,10 +180,17 @@ def process_video(video_path, detector, extractor):
         frame.motion = extractor.calculate_motion(prev_landmarks, landmarks)
         frame.displacement = extractor.calculate_displacement(prev_landmarks, landmarks)
 
-        frames.append(frame)
-        frame = Frame(landmarks)
+        # -------------------------------------------------
+        # Metadata (SET BEFORE APPEND)
+        # -------------------------------------------------
         frame.frame_index = frame_number
         frame.timestamp = timestamp_ms
+
+        # -------------------------------------------------
+        # Append ONCE
+        # -------------------------------------------------
+        frames.append(frame)
+
         frame_number += 1
 
         if cv2.waitKey(1) & 0xFF == ord("q"):
