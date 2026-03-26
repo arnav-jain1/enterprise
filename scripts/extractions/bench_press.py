@@ -20,7 +20,7 @@ class BenchPressExtractor(BaseExtractor):
     def calculate_angles(self, landmarks):
         angles = {}
         angles.update(self.calculate_elbow_angles(landmarks, True))
-        angles.update(self.calculate_shoulder_angles(landmarks))
+        angles.update(self.calculate_torso_angles(landmarks))
         return angles
     
     def calculate_displacement(self, prev, curr):
@@ -126,45 +126,21 @@ class BenchPressExtractor(BaseExtractor):
         issues = []
 
         # ----------------------------------------
-        # Shoulder cheating
-        # ----------------------------------------
-        if abs(frame.motion.get("right_shoulder", 0.0)) > 15:
-            issues.append("shoulder_swing")
-        else:
-            issues.append("shoulder_stable")
-
-        # ----------------------------------------
-        # Elbow instability
-        # ----------------------------------------
-        if frame.displacement.get("right_elbow", 0.0) > 0.005:
-            issues.append("elbow_moving")
-        else:
-            issues.append("elbow_stable")
-
-        # ----------------------------------------
-        # Bar path inconsistency
-        # ----------------------------------------
-        if abs(frame.motion.get("right_wrist", 0.0)) < 0.001:
-            issues.append("bar_not_moving")
-
-        # ----------------------------------------
         # Symmetry issue
         # ----------------------------------------
-        if abs(
-            frame.angles.get("right_elbow", 0.0)
-            - frame.angles.get("left_elbow", 0.0)
-        ) > 15:
+        if self.calculate_symmetry(frame.landmarks, 16, 15) > .05:
             issues.append("asymmetry")
+            issues.append("instability")
         else:
             issues.append("symmetric")
 
         # ----------------------------------------
         # Torso instability
         # ----------------------------------------
-        if abs(frame.angles.get("right_torso", 0.0)) > 15:
-            issues.append("torso_unstable")
+        if self.compute_uniform_angle(frame.angles, "right_torso", "left_torso") < 100:
+            issues.append("back not arched")
         else:
-            issues.append("torso_stable")
+            issues.append("back_arched")
 
         frame.features["form_issues"] = issues
         return issues
