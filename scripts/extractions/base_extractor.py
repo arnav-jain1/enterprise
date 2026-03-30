@@ -392,6 +392,8 @@ class BaseExtractor(ABC):
     # ============================================================
     # STABILITY / CONTROL METRICS
     # ============================================================
+    def compute_uniform_angle(self, angles, right_index, left_index):
+        return (angles[right_index] + angles[left_index]) / 2
 
     def compute_stability(self, displacement_series):
         """
