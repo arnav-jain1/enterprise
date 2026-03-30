@@ -99,6 +99,7 @@ class BenchPressExtractor(BaseExtractor):
         )
 
         frame.features.update(features)
+        
         return features
 
     def calculate_phase(self, frame):

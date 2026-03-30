@@ -5,13 +5,13 @@ import matplotlib.pyplot as plt
 def main():
     BASE_DIR = Path(__file__).resolve().parents[2]  # goes to Enterprise/
 
-    directory_path = BASE_DIR / "raw_data" / "deadlift"
+    directory_path = BASE_DIR / "raw_data" / "bench_press"
     count = 0
 
     for item in directory_path.iterdir():
         video_path = str(item)
 
-        output_path = BASE_DIR / "npz" / "deadlift_npz" / f"deadlift_{count}"
+        output_path = BASE_DIR / "npz" / "bench_press_npz" / f"bench_press_{count}"
 
         frames = video_to_npz(
             video_path,

@@ -122,8 +122,8 @@ def segment_motion_angle(prev_landmarks, curr_landmarks, A, B):
     return signed_angle(u, v)
 
 
-def uniform_angle(angles, a, b):
-    return (angles[a] + angles[b]) / 2
+def uniform_value(array, a, b):
+    return (array[a] + array[b]) / 2
 
 
 # ============================================================

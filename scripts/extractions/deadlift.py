@@ -1,5 +1,5 @@
 from scripts.extractions.base_extractor import BaseExtractor
-from scripts.geometry import uniform_angle
+from scripts.geometry import uniform_value
 
 class DeadliftExtractor(BaseExtractor):
 
@@ -71,12 +71,12 @@ class DeadliftExtractor(BaseExtractor):
         # ----------------------------------------
         # Hip hinge (main signal)
         # ----------------------------------------
-        features["hip_hinge"] = uniform_angle(frame.angles, "right_hip", "left_hip")
+        features["hip_hinge"] = uniform_value(frame.angles, "right_hip", "left_hip")
 
         # ----------------------------------------
         # Back angle (critical)
         # ----------------------------------------
-        features["back_angle"] = uniform_angle(frame.angles, "right_torso", "left_torso")
+        features["back_angle"] = uniform_value(frame.angles, "right_torso", "left_torso")
 
         # ----------------------------------------
         # Bar path
@@ -87,7 +87,7 @@ class DeadliftExtractor(BaseExtractor):
         # ----------------------------------------
         # Knee extension
         # ----------------------------------------
-        features["knee_extension"] = uniform_angle(frame.angles, "left_knee", "right_knee")
+        features["knee_extension"] = uniform_value(frame.angles, "left_knee", "right_knee")
 
         # ----------------------------------------
         # Alignment (YOU ALREADY ADDED THIS 🔥)

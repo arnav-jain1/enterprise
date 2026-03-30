@@ -217,7 +217,8 @@ def compute_motion_metrics(frames, extractor, fps):
     for frame in frames:
         extractor.calculate_additional_features(frame)
         extractor.calculate_phase(frame)
-        extractor.evaluate_form(frame)
+        print(extractor.evaluate_form(frame))
+        # extractor.evaluate_form(frame)
 
     return frames
 
