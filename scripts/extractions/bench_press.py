@@ -1,147 +1,182 @@
 from scripts.extractions.base_extractor import BaseExtractor
+import numpy as np
 
 '''
-Left/right elbow angle
+Overhead view bench press extractor.
 
-Left/right shoulder angle
+Visible landmarks overhead:
+    - Shoulders (11, 12)
+    - Elbows (13, 14)
+    - Wrists (15, 16)
 
-Wrist vertical position
+What we can reliably measure:
+    - Elbow angle (ROM, phase detection)
+    - Elbow flare (elbows tracking out relative to wrists/shoulders)
+    - Grip width (wrist spacing relative to shoulder width)
+    - Lateral bar path drift (wrists drifting left/right)
+    - Left/right symmetry
 
-Elbow velocity
-
-Wrist velocity
-
-Symmetry metric
+What we cannot measure overhead:
+    - Bar path vertical (depth/ROM in the press direction)
+    - Torso/arch
+    - Hip drive
 '''
 
 
 class BenchPressExtractor(BaseExtractor):
-    
+
+    # ============================================================
+    # ANGLES
+    # ============================================================
+
     def calculate_angles(self, landmarks):
         angles = {}
-        angles.update(self.calculate_elbow_angles(landmarks, True))
-        angles.update(self.calculate_torso_angles(landmarks))
+        angles.update(self.calculate_elbow_angles(landmarks, abs_bool=True))
+        angles.update(self.calculate_shoulder_angles(landmarks))
+        angles.update(self.calculate_elbow_flare(landmarks))
         return angles
-    
+
+    # ============================================================
+    # DISPLACEMENT
+    # ============================================================
+
     def calculate_displacement(self, prev, curr):
         if prev is None:
             return {
                 "right_elbow": 0.0,
-                "left_elbow": 0.0,
+                "left_elbow":  0.0,
                 "right_wrist": 0.0,
-                "left_wrist": 0.0,
+                "left_wrist":  0.0,
             }
 
-        displacement = {}
+        return {
+            "right_elbow": abs(curr[14][0] - prev[14][0]),  # lateral drift
+            "left_elbow":  abs(curr[13][0] - prev[13][0]),
+            "right_wrist": abs(curr[16][0] - prev[16][0]),
+            "left_wrist":  abs(curr[15][0] - prev[15][0]),
+        }
 
-        displacement["right_elbow"] = abs(curr[14][1] - prev[14][1])
-        displacement["left_elbow"] = abs(curr[13][1] - prev[13][1])
+    # ============================================================
+    # MOTION
+    # ============================================================
 
-        return displacement
-    
     def calculate_motion(self, prev, curr):
-
+        """
+        Overhead: wrist lateral motion (x-axis drift).
+        Phase is derived from elbow angle change, not wrist vertical.
+        """
         if prev is None:
             return {
                 "right_wrist": 0.0,
-                "left_wrist": 0.0,
-                # add all keys you expect
+                "left_wrist":  0.0,
             }
 
-        motion = {}
+        return {
+            "right_wrist": curr[16][0] - prev[16][0],  # x drift
+            "left_wrist":  curr[15][0] - prev[15][0],
+        }
 
-        # your normal logic
-        motion["right_wrist"] = curr[16][1] - prev[16][1]
-        motion["left_wrist"] = curr[15][1] - prev[15][1]
+    # ============================================================
+    # ADDITIONAL FEATURES
+    # ============================================================
 
-        return motion
-    
     def calculate_additional_features(self, frame):
-        """
-        Bench-press-specific features.
-        """
-
         features = {}
 
-        # ----------------------------------------
-        # Elbow extension (main signal)
-        # ----------------------------------------
+        # Elbow ROM (primary rep signal overhead)
         features["elbow_extension"] = frame.angles.get("right_elbow", 0.0)
 
-        # ----------------------------------------
-        # Bar path (wrist vertical)
-        # ----------------------------------------
-        features["bar_path"] = frame.motion.get("right_wrist", 0.0)
-
-        # ----------------------------------------
-        # Shoulder compensation
-        # ----------------------------------------
-        features["shoulder_movement"] = abs(
-            frame.motion.get("right_shoulder", 0.0)
+        # Elbow flare
+        features["right_elbow_flare"] = frame.angles.get("right_elbow_flare", 0.0)
+        features["left_elbow_flare"]  = frame.angles.get("left_elbow_flare", 0.0)
+        features["avg_elbow_flare"]   = self.compute_uniform_value(
+            frame.angles, "right_elbow_flare", "left_elbow_flare"
         )
 
-        # ----------------------------------------
-        # Elbow stability
-        # ----------------------------------------
-        features["elbow_stability"] = frame.displacement.get("right_elbow", 0.0)
+        # Grip width ratio (needs raw landmarks)
+        if frame.landmarks is not None:
+            features["grip_width_ratio"] = self.calculate_grip_width_ratio(
+                frame.landmarks
+            )
 
-        # ----------------------------------------
-        # Torso stability (arching / lifting)
-        # ----------------------------------------
-        features["torso_angle"] = frame.angles.get("right_torso", 0.0)
+        # Lateral wrist drift (bar path consistency)
+        features["right_wrist_drift"] = frame.displacement.get("right_wrist", 0.0)
+        features["left_wrist_drift"]  = frame.displacement.get("left_wrist", 0.0)
 
-        # ----------------------------------------
-        # Symmetry (left vs right)
-        # ----------------------------------------
+        # Elbow lateral stability
+        features["elbow_stability"] = self.compute_uniform_value(
+            frame.displacement, "right_elbow", "left_elbow"
+        )
+
+        # Left/right symmetry (elbow angles)
         features["symmetry"] = abs(
             frame.angles.get("right_elbow", 0.0)
             - frame.angles.get("left_elbow", 0.0)
         )
 
         frame.features.update(features)
-        
         return features
 
-    def calculate_phase(self, frame):
-        """
-        Determine phase using wrist velocity (bar movement).
-        """
+    # ============================================================
+    # PHASE DETECTION
+    # ============================================================
 
-        vel = frame.motion.get("right_wrist", 0.0)
+    def calculate_phase(self, frame, prev_frame=None):
+        """
+        Overhead: phase from elbow angle delta.
 
-        if vel < 0:
-            phase = "eccentric"   # lowering (down)
-        elif vel > 0:
-            phase = "concentric"  # pressing (up)
+        Concentric (pressing up)  → elbow angle increasing (extending)
+        Eccentric  (lowering)     → elbow angle decreasing (flexing)
+        """
+        if prev_frame is None:
+            frame.phase["bench"] = "static"
+            return "static"
+
+        delta = (
+            frame.angles.get("right_elbow", 0.0)
+            - prev_frame.angles.get("right_elbow", 0.0)
+        )
+
+        if delta > 0:
+            phase = "concentric"
+        elif delta < 0:
+            phase = "eccentric"
         else:
             phase = "static"
 
-        frame.phase["right_wrist"] = phase
+        frame.phase["bench"] = phase
         return phase
 
-    def evaluate_form(self, frame):
-        """
-        Evaluate form for a single frame.
-        """
+    # ============================================================
+    # FORM EVALUATION
+    # ============================================================
 
+    def evaluate_form(self, frame):
         issues = []
 
         # ----------------------------------------
-        # Symmetry issue
+        # Symmetry — left vs right elbow angle
         # ----------------------------------------
-        if self.calculate_symmetry(frame.landmarks, 16, 15) > .05:
+        if self.calculate_symmetry(frame.landmarks, 16, 15) > .07:
             issues.append("asymmetry")
-            issues.append("instability")
-        else:
-            issues.append("symmetric")
 
         # ----------------------------------------
-        # Torso instability
+        # Grip width — outside 1.2–2.0x shoulder width is a flag
         # ----------------------------------------
-        if self.compute_uniform_angle(frame.angles, "right_torso", "left_torso") < 100:
-            issues.append("back not arched")
-        else:
-            issues.append("back_arched")
+        grip_ratio = frame.features.get("grip_width_ratio", 0.0)
+        if grip_ratio < 1.2:
+            issues.append("grip_too_narrow")
+        elif grip_ratio > 3:
+            issues.append("grip_too_wide")
 
+        # ----------------------------------------
+        # Lateral wrist drift — bar path instability
+        # ----------------------------------------
+        right_drift = frame.features.get("right_wrist_drift", 0.0)
+        left_drift  = frame.features.get("left_wrist_drift", 0.0)
+        if right_drift > 0.03 or left_drift > 0.03:
+            issues.append("bar_path_drift")
+
+        print(self.calculate_symmetry(frame.landmarks, 16, 15))
         frame.features["form_issues"] = issues
         return issues

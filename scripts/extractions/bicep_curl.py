@@ -1,5 +1,4 @@
 from scripts.extractions.base_extractor import BaseExtractor
-from scripts.geometry import uniform_value
 
 class BicepCurlExtractor(BaseExtractor):
 
@@ -7,7 +6,7 @@ class BicepCurlExtractor(BaseExtractor):
         angles = {}
         angles.update(self.calculate_elbow_angles(landmarks, False))
         angles.update(self.calculate_shoulder_angles(landmarks))
-        angles.update(self.calculate_torso_angles(landmarks))
+        angles.update(self.calculate_torso_angles(landmarks, True))
         angles.update(self.calculate_wrist_angles(landmarks))
         return angles
     
@@ -86,12 +85,12 @@ class BicepCurlExtractor(BaseExtractor):
             issues.append("shoulder_stable")
 
         # Elbow drifting
-        if uniform_value(frame.displacement, "right_elbow", "left_elbow") > 0.005:
+        if self.compute_uniform_value(frame.displacement, "right_elbow", "left_elbow") > 0.005:
             issues.append("elbow_moving")
         else:
             issues.append("elbow_stable")
         # Torso leaning
-        if abs(uniform_value(frame.angles, "right_torso", "left_torso")) > 20:
+        if abs(self.compute_uniform_value(frame.angles, "right_torso", "left_torso")) > 20:
             issues.append("torso_lean")
         else:            
             issues.append("torso_stable")

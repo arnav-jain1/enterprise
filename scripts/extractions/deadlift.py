@@ -1,5 +1,4 @@
 from scripts.extractions.base_extractor import BaseExtractor
-from scripts.geometry import uniform_value
 
 class DeadliftExtractor(BaseExtractor):
 
@@ -10,7 +9,7 @@ class DeadliftExtractor(BaseExtractor):
         angles = {}
 
         # Core joints for deadlift
-        angles.update(self.calculate_torso_angles(landmarks))   # back angle
+        angles.update(self.calculate_torso_angles(landmarks, True))   # back angle
         angles.update(self.calculate_hip_angles(landmarks))     # YOU NEED TO ADD THIS (see below)
         angles.update(self.calculate_knee_angles(landmarks))    # YOU NEED TO ADD THIS
 
@@ -71,12 +70,12 @@ class DeadliftExtractor(BaseExtractor):
         # ----------------------------------------
         # Hip hinge (main signal)
         # ----------------------------------------
-        features["hip_hinge"] = uniform_value(frame.angles, "right_hip", "left_hip")
+        features["hip_hinge"] = self.compute_uniform_value(frame.angles, "right_hip", "left_hip")
 
         # ----------------------------------------
         # Back angle (critical)
         # ----------------------------------------
-        features["back_angle"] = uniform_value(frame.angles, "right_torso", "left_torso")
+        features["back_angle"] = self.compute_uniform_value(frame.angles, "right_torso", "left_torso")
 
         # ----------------------------------------
         # Bar path
@@ -87,7 +86,7 @@ class DeadliftExtractor(BaseExtractor):
         # ----------------------------------------
         # Knee extension
         # ----------------------------------------
-        features["knee_extension"] = uniform_value(frame.angles, "left_knee", "right_knee")
+        features["knee_extension"] = self.compute_uniform_value(frame.angles, "left_knee", "right_knee")
 
         # ----------------------------------------
         # Alignment (YOU ALREADY ADDED THIS 🔥)
@@ -124,11 +123,11 @@ class DeadliftExtractor(BaseExtractor):
 
         issues = []
 
-        # ----------------------------------------
-        # Back rounding
-        # ----------------------------------------
-        if abs(frame.features.get("back_angle", 0.0)) < 120:
-            issues.append("back_rounding")
+        # # ----------------------------------------
+        # # Back rounding
+        # # ----------------------------------------
+        # if abs(frame.features.get("back_angle", 0.0)) < 130:
+        #     issues.append("back_rounding")
 
         # ----------------------------------------
         # Bar drifting forward/back
@@ -143,12 +142,27 @@ class DeadliftExtractor(BaseExtractor):
         #     issues.append("incomplete_lockout")
 
         # ----------------------------------------
+        # Hip Shooting
+        # ----------------------------------------
+        hip_vel = frame.motion.get("hip", 0.0)
+        shoulder_vel = frame.motion.get("shoulder", 0.0)
+
+        # Both should be moving up (negative y) at similar rates
+        if hip_vel < 0 and shoulder_vel < 0:
+            if abs(hip_vel) > abs(shoulder_vel) * 1.5:
+                issues.append("hips_shooting")
+
+        # ----------------------------------------
         # Setup alignment
         # ----------------------------------------
         if frame.features.get("alignment_error", 0.0) > 0.08:
             issues.append("bad_setup")
 
-
+        print("Left Knee:", frame.angles["left_knee"],
+              "Right Knee:", frame.angles["right_knee"], 
+              "Back:", frame.features["back_angle"],
+              "Hip:", frame.motion["hip"],
+              "Shoulder:", frame.motion["shoulder"])
         frame.features["form_issues"] = issues
 
         return issues

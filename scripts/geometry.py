@@ -83,6 +83,23 @@ def joint_angle(landmarks, U, O, V):
     return 180 - abs(angle)
 
 
+def joint_angle_ext(landmarks, U, O, V):
+    """
+    Joint angle using anatomical convention.
+    
+    180° = fully extended (straight)
+    ~90° = right angle bend
+    ~0°  = fully flexed
+    
+    Use this for joints where you care about extension,
+    e.g. knees, hips at lockout.
+    """
+    u = vector(landmarks[U], landmarks[O])
+    v = vector(landmarks[V], landmarks[O])
+
+    return abs(signed_angle(u, v))
+
+
 def segment_orientation_horizontal(landmarks, A, B):
     """
     Orientation of segment B → A relative to horizontal.
@@ -120,10 +137,6 @@ def segment_motion_angle(prev_landmarks, curr_landmarks, A, B):
     v = vector(curr_landmarks[A], curr_landmarks[B])
 
     return signed_angle(u, v)
-
-
-def uniform_value(array, a, b):
-    return (array[a] + array[b]) / 2
 
 
 # ============================================================

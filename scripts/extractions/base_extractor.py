@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from scripts.geometry import (
     get_all_angles_arrays,
     joint_angle,
+    joint_angle_ext,
     point_displacement,
     segment_motion_angle,
     segment_orientation_horizontal,
@@ -136,11 +137,17 @@ class BaseExtractor(ABC):
             "left_shoulder":  joint_angle(landmarks, 13, 11, 23),
         }
 
-    def calculate_torso_angles(self, landmarks):
-        return {
-            "right_torso": segment_orientation_vertical(landmarks, 12, 24),
-            "left_torso":  segment_orientation_vertical(landmarks, 11, 23),
-        }
+    def calculate_torso_angles(self, landmarks, vertical):
+        if vertical:
+            return {
+                "right_torso": segment_orientation_vertical(landmarks, 12, 24),
+                "left_torso":  segment_orientation_vertical(landmarks, 11, 23),
+            }
+        else:
+            return {
+                "right_torso": segment_orientation_horizontal(landmarks, 12, 24),
+                "left_torso":  segment_orientation_horizontal(landmarks, 11, 23),
+            }
 
     def calculate_wrist_angles(self, landmarks):
         return {
@@ -150,14 +157,54 @@ class BaseExtractor(ABC):
     
     def calculate_hip_angles(self, landmarks):
         return {
-            "right_hip": joint_angle(landmarks, 12, 24, 26),  # shoulder-hip-knee
-            "left_hip":  joint_angle(landmarks, 11, 23, 25),
+            "right_hip": joint_angle_ext(landmarks, 12, 24, 26),  # shoulder-hip-knee
+            "left_hip":  joint_angle_ext(landmarks, 11, 23, 25),
         }
     
     def calculate_knee_angles(self, landmarks):
         return {
-            "right_knee": joint_angle(landmarks, 24, 26, 28),
-            "left_knee":  joint_angle(landmarks, 23, 25, 27),
+            "right_knee": joint_angle_ext(landmarks, 24, 26, 28),
+            "left_knee":  joint_angle_ext(landmarks, 23, 25, 27),
+        }
+    
+    def calculate_elbow_flare(self, landmarks):
+        """
+        Elbow flare: angle between the forearm vector and the
+        shoulder-to-shoulder (horizontal) axis.
+
+        Overhead view — high angle = elbows flaring wide,
+        low angle = elbows tucked in.
+
+        MediaPipe indices:
+            12 = right shoulder, 14 = right elbow, 16 = right wrist
+            11 = left shoulder,  13 = left elbow,  15 = left wrist
+        """
+        def flare_angle(shoulder, elbow, wrist):
+            # Vector from elbow → wrist (forearm direction)
+            forearm = np.array([wrist[0] - elbow[0], wrist[1] - elbow[1]])
+            # Vector from elbow → shoulder (upper arm direction)
+            upper_arm = np.array([shoulder[0] - elbow[0], shoulder[1] - elbow[1]])
+
+            norm_f = np.linalg.norm(forearm)
+            norm_u = np.linalg.norm(upper_arm)
+
+            if norm_f == 0 or norm_u == 0:
+                return 0.0
+
+            cos_angle = np.dot(forearm, upper_arm) / (norm_f * norm_u)
+            return np.degrees(np.arccos(np.clip(cos_angle, -1.0, 1.0)))
+
+        r_shoulder = landmarks[12][:2]
+        r_elbow    = landmarks[14][:2]
+        r_wrist    = landmarks[16][:2]
+
+        l_shoulder = landmarks[11][:2]
+        l_elbow    = landmarks[13][:2]
+        l_wrist    = landmarks[15][:2]
+
+        return {
+            "right_elbow_flare": flare_angle(r_shoulder, r_elbow, r_wrist),
+            "left_elbow_flare":  flare_angle(l_shoulder, l_elbow, l_wrist),
         }
 
     # ============================================================
@@ -363,7 +410,43 @@ class BaseExtractor(ABC):
         elif velocity < 0:
             return "eccentric"
         return "static"
+    
+    def evaluate_rep_shape(self, frames, threshold=0.85):
+        """
+        Checks whether the right elbow angle series follows a parabolic
+        (U-shape) curve across a rep.
+        """
+        elbow_angles = np.array([f.angles.get("right_elbow", 0.0) for f in frames])
 
+        if len(elbow_angles) < 5:
+            return {"parabola_fit": 0.0, "clean_rep": False,
+                    "bottom_frame": -1, "issue": "insufficient_frames"}
+
+        x = np.arange(len(elbow_angles))
+
+        coeffs  = np.polyfit(x, elbow_angles, 2)
+        y_fit   = np.polyval(coeffs, x)
+
+        ss_res  = np.sum((elbow_angles - y_fit) ** 2)
+        ss_tot  = np.sum((elbow_angles - np.mean(elbow_angles)) ** 2)
+        r2      = 1 - (ss_res / ss_tot) if ss_tot != 0 else 0.0
+
+        opens_upward = coeffs[0] > 0
+        bottom_frame = int(np.argmin(elbow_angles))
+
+        if not opens_upward:
+            issue = "inverted_rep_shape"
+        elif r2 < threshold:
+            issue = "inconsistent_rep"
+        else:
+            issue = None
+
+        return {
+            "parabola_fit": round(r2, 3),
+            "clean_rep": r2 >= threshold and opens_upward,
+            "bottom_frame": bottom_frame,
+            "issue": issue
+        }
 
     # ============================================================
     # RANGE OF MOTION (ROM)
@@ -392,8 +475,8 @@ class BaseExtractor(ABC):
     # ============================================================
     # STABILITY / CONTROL METRICS
     # ============================================================
-    def compute_uniform_angle(self, angles, right_index, left_index):
-        return (angles[right_index] + angles[left_index]) / 2
+    def compute_uniform_value(self, array, right_index, left_index):
+        return (array[right_index] + array[left_index]) / 2
 
     def compute_stability(self, displacement_series):
         """
@@ -440,6 +523,27 @@ class BaseExtractor(ABC):
         jerk = np.diff(acceleration_series)
         return np.mean(np.abs(jerk))
 
+    # ============================================================
+    # GRIP WIDTH
+    # ============================================================
+ 
+    def calculate_grip_width_ratio(self, landmarks):
+        """
+        Wrist span relative to shoulder span.
+ 
+        Ratio > 1.0  → wider than shoulders
+        Ratio ~ 1.0  → shoulder-width grip
+        Ratio < 1.0  → narrower than shoulders
+ 
+        Standard powerlifting bench is roughly 1.5–1.8x shoulder width.
+        """
+        shoulder_width = abs(landmarks[12][0] - landmarks[11][0])
+        wrist_width    = abs(landmarks[16][0] - landmarks[15][0])
+ 
+        if shoulder_width == 0:
+            return 0.0
+ 
+        return wrist_width / shoulder_width
 
     # ============================================================
     # FEATURE AGGREGATION (FRAME → WORKOUT)
