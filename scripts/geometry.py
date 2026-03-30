@@ -78,7 +78,9 @@ def joint_angle(landmarks, U, O, V):
     u = vector(landmarks[U], landmarks[O])
     v = vector(landmarks[V], landmarks[O])
 
-    return signed_angle(u, v)
+    angle = signed_angle(u, v)
+
+    return 180 - abs(angle)
 
 
 def segment_orientation(landmarks, A, B):
@@ -227,8 +229,11 @@ def get_all_angles_arrays(frames):
             if abs(arr[i] - arr[i-1]) > 60:  # elbow cannot change this fast
                 arr[i] = arr[i-1]
 
-        angles[key] = np.unwrap(np.radians(angles[key]))
-        angles[key] = np.degrees(angles[key])
+        angles[key] = savgol_filter(
+            medfilt(arr, kernel_size=3),
+            polyorder=3,
+            window_length=9
+        )
         angles[key] = savgol_filter(
             medfilt(np.array(angles[key]), kernel_size=3),
             polyorder=3,

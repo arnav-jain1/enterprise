@@ -5,6 +5,7 @@ import numpy as np
 from scripts.frame import Frame
 from scripts.extractions.bicep_curl import BicepCurlExtractor
 from scripts.extractions.bench_press import BenchPressExtractor
+from scripts.extractions.deadlift import DeadliftExtractor
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 from scripts.pipelines.npz_to_pandas import frames_to_numpy
@@ -45,7 +46,8 @@ def select_extractor(video_path):
 
     extractor_types = {
         "barbell biceps curl": BicepCurlExtractor(),
-        "bench press": BenchPressExtractor()
+        "bench press": BenchPressExtractor(),
+        "deadlift": DeadliftExtractor()
     }
 
     for exercise in extractor_types:
