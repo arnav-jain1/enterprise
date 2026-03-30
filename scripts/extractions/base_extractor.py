@@ -4,6 +4,8 @@ from scripts.geometry import (
     joint_angle,
     point_displacement,
     segment_motion_angle,
+    segment_orientation_horizontal,
+    segment_orientation_vertical
 )
 import numpy as np
 from scripts.frame import Frame
@@ -136,8 +138,8 @@ class BaseExtractor(ABC):
 
     def calculate_torso_angles(self, landmarks):
         return {
-            "right_torso": joint_angle(landmarks, 12, 24, 26),
-            "left_torso":  joint_angle(landmarks, 11, 23, 25),
+            "right_torso": segment_orientation_vertical(landmarks, 12, 24),
+            "left_torso":  segment_orientation_vertical(landmarks, 11, 23),
         }
 
     def calculate_wrist_angles(self, landmarks):

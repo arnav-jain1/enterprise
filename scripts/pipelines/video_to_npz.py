@@ -167,6 +167,7 @@ def process_video(video_path, detector, extractor):
             prev_angles = frames[-1].angles
 
             for key in frame.angles:
+
                 delta = abs(frame.angles[key] - prev_angles[key])
 
                 if delta > MAX_ANGLE_DELTA:
@@ -174,7 +175,9 @@ def process_video(video_path, detector, extractor):
                         0.7 * prev_angles[key] + 0.3 * frame.angles[key]
                     )
 
-                frame.angles[key] = max(0, min(180, frame.angles[key]))
+                # Only clamp joint angles
+                if any(j in key for j in ["elbow", "knee", "hip", "shoulder"]):
+                    frame.angles[key] = max(0, min(180, frame.angles[key]))
 
         # -------------------------------------------------
         # Motion + displacement
@@ -214,8 +217,7 @@ def compute_motion_metrics(frames, extractor, fps):
     for frame in frames:
         extractor.calculate_additional_features(frame)
         extractor.calculate_phase(frame)
-        print(extractor.evaluate_form(frame))
-
+        extractor.evaluate_form(frame)
 
     return frames
 

@@ -83,7 +83,7 @@ def joint_angle(landmarks, U, O, V):
     return 180 - abs(angle)
 
 
-def segment_orientation(landmarks, A, B):
+def segment_orientation_horizontal(landmarks, A, B):
     """
     Orientation of segment B → A relative to horizontal.
 
@@ -100,6 +100,11 @@ def segment_orientation(landmarks, A, B):
     return np.degrees(np.arctan2(v[1], v[0]))
 
 
+def segment_orientation_vertical(landmarks, A, B):
+    v = vector(landmarks[A], landmarks[B])
+
+    return abs(np.degrees(np.arctan2(v[0], v[1])))
+
 def segment_motion_angle(prev_landmarks, curr_landmarks, A, B):
     """
     Signed rotation of segment B → A between two frames.
@@ -115,6 +120,10 @@ def segment_motion_angle(prev_landmarks, curr_landmarks, A, B):
     v = vector(curr_landmarks[A], curr_landmarks[B])
 
     return signed_angle(u, v)
+
+
+def uniform_angle(angles, a, b):
+    return (angles[a] + angles[b]) / 2
 
 
 # ============================================================
