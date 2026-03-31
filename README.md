@@ -2,4 +2,4 @@
 
 - Set default branch to main
 - delete arnav_is_chud branch
-- touch urself
+- dont fuck up meeting with sutley
