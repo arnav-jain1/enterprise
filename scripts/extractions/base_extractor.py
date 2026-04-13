@@ -2,8 +2,11 @@ from abc import ABC, abstractmethod
 from scripts.geometry import (
     get_all_angles_arrays,
     joint_angle,
+    joint_angle_ext,
     point_displacement,
     segment_motion_angle,
+    segment_orientation_horizontal,
+    segment_orientation_vertical
 )
 import numpy as np
 from scripts.frame import Frame
@@ -134,16 +137,74 @@ class BaseExtractor(ABC):
             "left_shoulder":  joint_angle(landmarks, 13, 11, 23),
         }
 
-    def calculate_torso_angles(self, landmarks):
-        return {
-            "right_torso": joint_angle(landmarks, 12, 24, 26),
-            "left_torso":  joint_angle(landmarks, 11, 23, 25),
-        }
+    def calculate_torso_angles(self, landmarks, vertical):
+        if vertical:
+            return {
+                "right_torso": segment_orientation_vertical(landmarks, 12, 24),
+                "left_torso":  segment_orientation_vertical(landmarks, 11, 23),
+            }
+        else:
+            return {
+                "right_torso": segment_orientation_horizontal(landmarks, 12, 24),
+                "left_torso":  segment_orientation_horizontal(landmarks, 11, 23),
+            }
 
     def calculate_wrist_angles(self, landmarks):
         return {
             "right_wrist": joint_angle(landmarks, 20, 16, 14),
             "left_wrist":  joint_angle(landmarks, 19, 15, 13),
+        }
+    
+    def calculate_hip_angles(self, landmarks):
+        return {
+            "right_hip": joint_angle_ext(landmarks, 12, 24, 26),  # shoulder-hip-knee
+            "left_hip":  joint_angle_ext(landmarks, 11, 23, 25),
+        }
+    
+    def calculate_knee_angles(self, landmarks):
+        return {
+            "right_knee": joint_angle_ext(landmarks, 24, 26, 28),
+            "left_knee":  joint_angle_ext(landmarks, 23, 25, 27),
+        }
+    
+    def calculate_elbow_flare(self, landmarks):
+        """
+        Elbow flare: angle between the forearm vector and the
+        shoulder-to-shoulder (horizontal) axis.
+
+        Overhead view — high angle = elbows flaring wide,
+        low angle = elbows tucked in.
+
+        MediaPipe indices:
+            12 = right shoulder, 14 = right elbow, 16 = right wrist
+            11 = left shoulder,  13 = left elbow,  15 = left wrist
+        """
+        def flare_angle(shoulder, elbow, wrist):
+            # Vector from elbow → wrist (forearm direction)
+            forearm = np.array([wrist[0] - elbow[0], wrist[1] - elbow[1]])
+            # Vector from elbow → shoulder (upper arm direction)
+            upper_arm = np.array([shoulder[0] - elbow[0], shoulder[1] - elbow[1]])
+
+            norm_f = np.linalg.norm(forearm)
+            norm_u = np.linalg.norm(upper_arm)
+
+            if norm_f == 0 or norm_u == 0:
+                return 0.0
+
+            cos_angle = np.dot(forearm, upper_arm) / (norm_f * norm_u)
+            return np.degrees(np.arccos(np.clip(cos_angle, -1.0, 1.0)))
+
+        r_shoulder = landmarks[12][:2]
+        r_elbow    = landmarks[14][:2]
+        r_wrist    = landmarks[16][:2]
+
+        l_shoulder = landmarks[11][:2]
+        l_elbow    = landmarks[13][:2]
+        l_wrist    = landmarks[15][:2]
+
+        return {
+            "right_elbow_flare": flare_angle(r_shoulder, r_elbow, r_wrist),
+            "left_elbow_flare":  flare_angle(l_shoulder, l_elbow, l_wrist),
         }
 
     # ============================================================
@@ -182,6 +243,53 @@ class BaseExtractor(ABC):
             "left_elbow":  point_displacement(prev_landmarks, curr_landmarks, 13),
         }
 
+    def calculate_hip_displacement(self, prev_landmarks, curr_landmarks):
+        if prev_landmarks is None:
+            return {
+                "right_hip": 0.0,
+                "left_hip":  0.0,
+            }
+
+        return {
+            "right_hip": point_displacement(prev_landmarks, curr_landmarks, 24),
+            "left_hip":  point_displacement(prev_landmarks, curr_landmarks, 23),
+        }
+    
+    def calculate_shoulder_displacement(self, prev_landmarks, curr_landmarks):
+        if prev_landmarks is None:
+            return {
+                "right_shoulder": 0.0,
+                "left_shoulder":  0.0,
+            }
+
+        return {
+            "right_shoulder": point_displacement(prev_landmarks, curr_landmarks, 12),
+            "left_shoulder":  point_displacement(prev_landmarks, curr_landmarks, 11),
+        }
+    
+    def calculate_wrist_displacement(self, prev_landmarks, curr_landmarks):
+        if prev_landmarks is None:
+            return {
+                "right_wrist": 0.0,
+                "left_wrist":  0.0,
+            }
+
+        return {
+            "right_wrist": point_displacement(prev_landmarks, curr_landmarks, 16),
+            "left_wrist":  point_displacement(prev_landmarks, curr_landmarks, 15),
+        }
+    
+    def calculate_knee_displacement(self, prev_landmarks, curr_landmarks):
+        if prev_landmarks is None:
+            return {
+                "right_knee": 0.0,
+                "left_knee":  0.0,
+            }
+
+        return {
+            "right_knee": point_displacement(prev_landmarks, curr_landmarks, 26),
+            "left_knee":  point_displacement(prev_landmarks, curr_landmarks, 25),
+        }
     # ============================================================
     # SYMMETRY
     # ============================================================
@@ -201,175 +309,284 @@ class BaseExtractor(ABC):
 
         return {name: value} if name else value
     
+    def check_feet_shoulder_alignment(self, landmarks, threshold=0.08):
+        """
+        Checks if shoulders are aligned over feet (deadlift setup).
+
+        Parameters
+        ----------
+        landmarks : list
+            MediaPipe pose landmarks
+        threshold : float
+            Allowed horizontal deviation (normalized coords)
+
+        Returns
+        -------
+        dict
+            {
+                "aligned": bool,
+                "shoulder_mid_x": float,
+                "foot_mid_x": float,
+                "deviation": float
+            }
+        """
+
+        # ---------------------------------------
+        # Get X positions (normalized [0,1])
+        # ---------------------------------------
+        left_shoulder_x = landmarks[11][0]
+        right_shoulder_x = landmarks[12][0]
+        left_foot_x = landmarks[31][0]
+        right_foot_x = landmarks[32][0]
+
+        # ---------------------------------------
+        # Compute midpoints
+        # ---------------------------------------
+        shoulder_mid_x = (left_shoulder_x + right_shoulder_x) / 2
+        foot_mid_x = (left_foot_x + right_foot_x) / 2
+
+        # ---------------------------------------
+        # Compute deviation
+        # ---------------------------------------
+        deviation = abs(shoulder_mid_x - foot_mid_x)
+
+        aligned = deviation < threshold
+
+        return {
+            "aligned": aligned,
+            "shoulder_mid_x": shoulder_mid_x,
+            "foot_mid_x": foot_mid_x,
+            "deviation": deviation
+        }
+    
     # ============================================================
-# TEMPORAL / SEQUENCE FEATURES
-# ============================================================
+    # TEMPORAL / SEQUENCE FEATURES
+    # ============================================================
 
-def detect_reps(self, angle_series):
-    """
-    Detect repetitions based on local minima in the angle signal.
+    def detect_reps(self, angle_series):
+        """
+        Detect repetitions based on local minima in the angle signal.
 
-    For bicep curls:
-        - A rep peak occurs at the smallest elbow angle (top of curl)
+        For bicep curls:
+            - A rep peak occurs at the smallest elbow angle (top of curl)
 
-    Parameters
-    ----------
-    angle_series : list[float] or np.array
+        Parameters
+        ----------
+        angle_series : list[float] or np.array
 
-    Returns
-    -------
-    list[int]
-        Indices of detected rep peaks
-    """
+        Returns
+        -------
+        list[int]
+            Indices of detected rep peaks
+        """
 
-    reps = []
+        reps = []
 
-    for i in range(1, len(angle_series) - 1):
-        if angle_series[i - 1] > angle_series[i] < angle_series[i + 1]:
-            reps.append(i)
+        for i in range(1, len(angle_series) - 1):
+            if angle_series[i - 1] > angle_series[i] < angle_series[i + 1]:
+                reps.append(i)
 
-    return reps
-
-
-def get_movement_phase(self, velocity):
-    """
-    Classify movement phase based on velocity sign.
-
-    Parameters
-    ----------
-    velocity : float
-
-    Returns
-    -------
-    str
-        "concentric"  -> lifting phase
-        "eccentric"   -> lowering phase
-        "static"      -> near zero movement
-    """
-
-    if velocity > 0:
-        return "concentric"
-    elif velocity < 0:
-        return "eccentric"
-    return "static"
+        return reps
 
 
-# ============================================================
-# RANGE OF MOTION (ROM)
-# ============================================================
+    def get_movement_phase(self, velocity):
+        """
+        Classify movement phase based on velocity sign.
 
-def compute_rom(self, angle_series):
-    """
-    Compute range of motion for a joint.
+        Parameters
+        ----------
+        velocity : float
 
-    Parameters
-    ----------
-    angle_series : list[float] or np.array
+        Returns
+        -------
+        str
+            "concentric"  -> lifting phase
+            "eccentric"   -> lowering phase
+            "static"      -> near zero movement
+        """
 
-    Returns
-    -------
-    float
-        Max angle - Min angle
-    """
+        if velocity > 0:
+            return "concentric"
+        elif velocity < 0:
+            return "eccentric"
+        return "static"
+    
+    def evaluate_rep_shape(self, frames, threshold=0.85):
+        """
+        Checks whether the right elbow angle series follows a parabolic
+        (U-shape) curve across a rep.
+        """
+        elbow_angles = np.array([f.angles.get("right_elbow", 0.0) for f in frames])
 
-    if len(angle_series) == 0:
-        return 0.0
+        if len(elbow_angles) < 5:
+            return {"parabola_fit": 0.0, "clean_rep": False,
+                    "bottom_frame": -1, "issue": "insufficient_frames"}
 
-    return max(angle_series) - min(angle_series)
+        x = np.arange(len(elbow_angles))
 
+        coeffs  = np.polyfit(x, elbow_angles, 2)
+        y_fit   = np.polyval(coeffs, x)
 
-# ============================================================
-# STABILITY / CONTROL METRICS
-# ============================================================
+        ss_res  = np.sum((elbow_angles - y_fit) ** 2)
+        ss_tot  = np.sum((elbow_angles - np.mean(elbow_angles)) ** 2)
+        r2      = 1 - (ss_res / ss_tot) if ss_tot != 0 else 0.0
 
-def compute_stability(self, displacement_series):
-    """
-    Measure movement stability using standard deviation.
+        opens_upward = coeffs[0] > 0
+        bottom_frame = int(np.argmin(elbow_angles))
 
-    High variance = unstable / excessive movement
-    Low variance  = controlled / stable movement
+        if not opens_upward:
+            issue = "inverted_rep_shape"
+        elif r2 < threshold:
+            issue = "inconsistent_rep"
+        else:
+            issue = None
 
-    Parameters
-    ----------
-    displacement_series : list[float] or np.array
+        return {
+            "parabola_fit": round(r2, 3),
+            "clean_rep": r2 >= threshold and opens_upward,
+            "bottom_frame": bottom_frame,
+            "issue": issue
+        }
 
-    Returns
-    -------
-    float
-    """
+    # ============================================================
+    # RANGE OF MOTION (ROM)
+    # ============================================================
 
-    if len(displacement_series) == 0:
-        return 0.0
+    def compute_rom(self, angle_series):
+        """
+        Compute range of motion for a joint.
 
-    return np.std(displacement_series)
+        Parameters
+        ----------
+        angle_series : list[float] or np.array
 
+        Returns
+        -------
+        float
+            Max angle - Min angle
+        """
 
-def compute_smoothness(self, acceleration_series):
-    """
-    Estimate smoothness using jerk (change in acceleration).
+        if len(angle_series) == 0:
+            return 0.0
 
-    Lower jerk = smoother motion
-    Higher jerk = jerky / uncontrolled motion
-
-    Parameters
-    ----------
-    acceleration_series : list[float] or np.array
-
-    Returns
-    -------
-    float
-        Mean absolute jerk
-    """
-
-    if len(acceleration_series) < 2:
-        return 0.0
-
-    jerk = np.diff(acceleration_series)
-    return np.mean(np.abs(jerk))
+        return max(angle_series) - min(angle_series)
 
 
-# ============================================================
-# FEATURE AGGREGATION (FRAME → WORKOUT)
-# ============================================================
+    # ============================================================
+    # STABILITY / CONTROL METRICS
+    # ============================================================
+    def compute_uniform_value(self, array, right_index, left_index):
+        return (array[right_index] + array[left_index]) / 2
 
-def aggregate_features(self, frames):
-    """
-    Aggregate frame-level features into workout-level metrics.
+    def compute_stability(self, displacement_series):
+        """
+        Measure movement stability using standard deviation.
 
-    This converts raw signals into meaningful summaries.
+        High variance = unstable / excessive movement
+        Low variance  = controlled / stable movement
 
-    Parameters
-    ----------
-    frames : list[Frame]
+        Parameters
+        ----------
+        displacement_series : list[float] or np.array
 
-    Returns
-    -------
-    dict
-        High-level workout metrics
-    """
+        Returns
+        -------
+        float
+        """
 
-    if len(frames) == 0:
-        return {}
+        if len(displacement_series) == 0:
+            return 0.0
 
-    # ----------------------------------------
-    # Extract time-series
-    # ----------------------------------------
-    elbow_angles = [f.angles.get("right_elbow", 0.0) for f in frames]
-    velocities = [f.velocity.get("right_elbow", 0.0) for f in frames]
-    accelerations = [f.acceleration.get("right_elbow", 0.0) for f in frames]
-    displacements = [f.displacement.get("right_elbow", 0.0) for f in frames]
+        return np.std(displacement_series)
 
-    # ----------------------------------------
-    # Compute metrics
-    # ----------------------------------------
-    reps = self.detect_reps(elbow_angles)
 
-    metrics = {
-        "rep_count": len(reps),
-        "range_of_motion": self.compute_rom(elbow_angles),
-        "avg_velocity": float(np.mean(velocities)) if velocities else 0.0,
-        "stability": self.compute_stability(displacements),
-        "smoothness": self.compute_smoothness(accelerations),
-    }
+    def compute_smoothness(self, acceleration_series):
+        """
+        Estimate smoothness using jerk (change in acceleration).
 
-    return metrics
+        Lower jerk = smoother motion
+        Higher jerk = jerky / uncontrolled motion
+
+        Parameters
+        ----------
+        acceleration_series : list[float] or np.array
+
+        Returns
+        -------
+        float
+            Mean absolute jerk
+        """
+
+        if len(acceleration_series) < 2:
+            return 0.0
+
+        jerk = np.diff(acceleration_series)
+        return np.mean(np.abs(jerk))
+
+    # ============================================================
+    # GRIP WIDTH
+    # ============================================================
+ 
+    def calculate_grip_width_ratio(self, landmarks):
+        """
+        Wrist span relative to shoulder span.
+ 
+        Ratio > 1.0  → wider than shoulders
+        Ratio ~ 1.0  → shoulder-width grip
+        Ratio < 1.0  → narrower than shoulders
+ 
+        Standard powerlifting bench is roughly 1.5–1.8x shoulder width.
+        """
+        shoulder_width = abs(landmarks[12][0] - landmarks[11][0])
+        wrist_width    = abs(landmarks[16][0] - landmarks[15][0])
+ 
+        if shoulder_width == 0:
+            return 0.0
+ 
+        return wrist_width / shoulder_width
+
+    # ============================================================
+    # FEATURE AGGREGATION (FRAME → WORKOUT)
+    # ============================================================
+
+    def aggregate_features(self, frames):
+        """
+        Aggregate frame-level features into workout-level metrics.
+
+        This converts raw signals into meaningful summaries.
+
+        Parameters
+        ----------
+        frames : list[Frame]
+
+        Returns
+        -------
+        dict
+            High-level workout metrics
+        """
+
+        if len(frames) == 0:
+            return {}
+
+        # ----------------------------------------
+        # Extract time-series
+        # ----------------------------------------
+        elbow_angles = [f.angles.get("right_elbow", 0.0) for f in frames]
+        velocities = [f.velocity.get("right_elbow", 0.0) for f in frames]
+        accelerations = [f.acceleration.get("right_elbow", 0.0) for f in frames]
+        displacements = [f.displacement.get("right_elbow", 0.0) for f in frames]
+
+        # ----------------------------------------
+        # Compute metrics
+        # ----------------------------------------
+        reps = self.detect_reps(elbow_angles)
+
+        metrics = {
+            "rep_count": len(reps),
+            "range_of_motion": self.compute_rom(elbow_angles),
+            "avg_velocity": float(np.mean(velocities)) if velocities else 0.0,
+            "stability": self.compute_stability(displacements),
+            "smoothness": self.compute_smoothness(accelerations),
+        }
+
+        return metrics

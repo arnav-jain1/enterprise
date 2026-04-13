@@ -78,10 +78,29 @@ def joint_angle(landmarks, U, O, V):
     u = vector(landmarks[U], landmarks[O])
     v = vector(landmarks[V], landmarks[O])
 
-    return signed_angle(u, v)
+    angle = signed_angle(u, v)
+
+    return 180 - abs(angle)
 
 
-def segment_orientation(landmarks, A, B):
+def joint_angle_ext(landmarks, U, O, V):
+    """
+    Joint angle using anatomical convention.
+    
+    180° = fully extended (straight)
+    ~90° = right angle bend
+    ~0°  = fully flexed
+    
+    Use this for joints where you care about extension,
+    e.g. knees, hips at lockout.
+    """
+    u = vector(landmarks[U], landmarks[O])
+    v = vector(landmarks[V], landmarks[O])
+
+    return abs(signed_angle(u, v))
+
+
+def segment_orientation_horizontal(landmarks, A, B):
     """
     Orientation of segment B → A relative to horizontal.
 
@@ -97,6 +116,11 @@ def segment_orientation(landmarks, A, B):
 
     return np.degrees(np.arctan2(v[1], v[0]))
 
+
+def segment_orientation_vertical(landmarks, A, B):
+    v = vector(landmarks[A], landmarks[B])
+
+    return abs(np.degrees(np.arctan2(v[0], v[1])))
 
 def segment_motion_angle(prev_landmarks, curr_landmarks, A, B):
     """
@@ -227,8 +251,11 @@ def get_all_angles_arrays(frames):
             if abs(arr[i] - arr[i-1]) > 60:  # elbow cannot change this fast
                 arr[i] = arr[i-1]
 
-        angles[key] = np.unwrap(np.radians(angles[key]))
-        angles[key] = np.degrees(angles[key])
+        angles[key] = savgol_filter(
+            medfilt(arr, kernel_size=3),
+            polyorder=3,
+            window_length=9
+        )
         angles[key] = savgol_filter(
             medfilt(np.array(angles[key]), kernel_size=3),
             polyorder=3,

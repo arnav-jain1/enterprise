@@ -5,9 +5,12 @@ import numpy as np
 from scripts.frame import Frame
 from scripts.extractions.bicep_curl import BicepCurlExtractor
 from scripts.extractions.bench_press import BenchPressExtractor
+from scripts.extractions.deadlift import DeadliftExtractor
+from scripts.extractions.lat_pulldown import LatPulldownExtractor
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 from scripts.pipelines.npz_to_pandas import frames_to_numpy
+from scripts.evaluator import OverallEvaluator
 
 
 # -------------------------------------------------------------
@@ -45,7 +48,9 @@ def select_extractor(video_path):
 
     extractor_types = {
         "barbell biceps curl": BicepCurlExtractor(),
-        "bench press": BenchPressExtractor()
+        "bench press": BenchPressExtractor(),
+        "deadlift": DeadliftExtractor(),
+        "lat pulldown": LatPulldownExtractor()
     }
 
     for exercise in extractor_types:
@@ -165,6 +170,7 @@ def process_video(video_path, detector, extractor):
             prev_angles = frames[-1].angles
 
             for key in frame.angles:
+
                 delta = abs(frame.angles[key] - prev_angles[key])
 
                 if delta > MAX_ANGLE_DELTA:
@@ -172,7 +178,9 @@ def process_video(video_path, detector, extractor):
                         0.7 * prev_angles[key] + 0.3 * frame.angles[key]
                     )
 
-                frame.angles[key] = max(0, min(180, frame.angles[key]))
+                # Only clamp joint angles
+                if any(j in key for j in ["elbow", "knee", "hip", "shoulder"]):
+                    frame.angles[key] = max(0, min(180, frame.angles[key]))
 
         # -------------------------------------------------
         # Motion + displacement
@@ -212,12 +220,12 @@ def compute_motion_metrics(frames, extractor, fps):
     for frame in frames:
         extractor.calculate_additional_features(frame)
         extractor.calculate_phase(frame)
-        print(extractor.evaluate_form(frame))
-
+        issues = extractor.evaluate_form(frame)
+        frame.issues = issues
 
     return frames
 
-# -------------------------------------------------------------
+# -------------------------------------------------------------v
 # Save frames to compressed NPZ
 # -------------------------------------------------------------
 def save_npz(frames, output_path):
@@ -241,7 +249,7 @@ def save_npz(frames, output_path):
 # -------------------------------------------------------------
 # Main pipeline
 # -------------------------------------------------------------
-def video_to_npz(video_path, output_path):
+def evaluation_pipeline(video_path):
     """
     Full processing pipeline:
 
@@ -260,7 +268,9 @@ def video_to_npz(video_path, output_path):
     # 4 Compute motion metrics
     frames = compute_motion_metrics(frames, extractor, fps)
 
-    # 5 Save processed data
-    save_npz(frames, output_path)
+    # 5 Evaluate
+    evaluator = OverallEvaluator(frames)
 
-    return frames
+    results = evaluator.evaluate_all_issues()
+
+    return results

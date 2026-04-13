@@ -1,0 +1,851 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FormCheck — Workout Analyzer</title>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --black: #0a0a0a;
+            --off-black: #111;
+            --card: #161616;
+            --border: #222;
+            --accent: #c8f535;
+            --accent-dim: #a3cc22;
+            --text: #e8e8e8;
+            --muted: #666;
+            --white: #fff;
+        }
+
+        body {
+            background: var(--black);
+            color: var(--text);
+            font-family: 'DM Sans', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 20px;
+            overflow-x: hidden;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+            pointer-events: none;
+            z-index: 999;
+            opacity: 0.4;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 48px;
+            animation: fadeUp 0.6s ease both;
+        }
+
+        .header-label {
+            font-size: 11px;
+            letter-spacing: 0.3em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 12px;
+            font-weight: 500;
+        }
+
+        .header h1 {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: clamp(56px, 10vw, 96px);
+            line-height: 0.9;
+            letter-spacing: 0.02em;
+            color: var(--white);
+        }
+
+        .header h1 span { color: var(--accent); }
+
+        .header p {
+            margin-top: 16px;
+            color: var(--muted);
+            font-size: 14px;
+            font-weight: 300;
+            max-width: 340px;
+            margin-inline: auto;
+            line-height: 1.6;
+        }
+
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            width: 100%;
+            max-width: 520px;
+            overflow: hidden;
+            animation: fadeUp 0.6s 0.15s ease both;
+            position: relative;
+        }
+
+        .card-inner { padding: 36px; }
+
+        .drop-zone {
+            border: 1.5px dashed var(--border);
+            border-radius: 12px;
+            padding: 48px 24px;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .drop-zone:hover, .drop-zone.dragover {
+            border-color: var(--accent);
+            background: rgba(200, 245, 53, 0.03);
+        }
+
+        .drop-zone input[type="file"] {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            cursor: pointer;
+            width: 100%;
+            height: 100%;
+        }
+
+        .drop-icon {
+            width: 52px;
+            height: 52px;
+            margin: 0 auto 16px;
+            background: #1e1e1e;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid var(--border);
+        }
+
+        .drop-icon svg { width: 24px; height: 24px; stroke: var(--accent); }
+
+        .drop-title { font-size: 15px; font-weight: 500; color: var(--text); margin-bottom: 6px; }
+        .drop-sub { font-size: 12px; color: var(--muted); }
+        .drop-sub strong { color: var(--accent); font-weight: 500; }
+
+        .file-preview {
+            display: none;
+            align-items: center;
+            gap: 14px;
+            padding: 14px 16px;
+            background: #1a1a1a;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            margin-top: 16px;
+        }
+
+        .file-preview.visible { display: flex; }
+
+        .file-thumb {
+            width: 40px;
+            height: 40px;
+            background: var(--accent);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .file-thumb svg { width: 18px; height: 18px; stroke: var(--black); }
+
+        .file-info { flex: 1; min-width: 0; }
+        .file-name {
+            font-size: 13px;
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: var(--text);
+        }
+        .file-size { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+        .remove-file {
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: var(--muted);
+            padding: 4px;
+            transition: color 0.15s;
+            display: flex;
+        }
+        .remove-file:hover { color: #ff5555; }
+        .remove-file svg { width: 16px; height: 16px; stroke: currentColor; }
+
+        .analyze-btn {
+            width: 100%;
+            margin-top: 20px;
+            padding: 16px;
+            background: var(--accent);
+            color: var(--black);
+            border: none;
+            border-radius: 10px;
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 18px;
+            letter-spacing: 0.12em;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.1s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .analyze-btn:hover { background: #d6ff3a; }
+        .analyze-btn:active { transform: scale(0.99); }
+        .analyze-btn:disabled {
+            background: #2a2a2a;
+            color: var(--muted);
+            cursor: not-allowed;
+        }
+
+        .analyze-btn .btn-loader {
+            display: none;
+            width: 18px;
+            height: 18px;
+            border: 2px solid rgba(0,0,0,0.2);
+            border-top-color: var(--black);
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+        }
+
+        .analyze-btn.loading .btn-label { display: none; }
+        .analyze-btn.loading .btn-loader { display: block; }
+        .analyze-btn.loading .btn-text-loading { display: inline; }
+        .btn-text-loading { display: none; }
+
+        /* ── Video + overlay progress bar ── */
+        .video-wrapper {
+            display: none;
+            position: relative;
+            width: 100%;
+            margin-top: 20px;
+        }
+
+        .video-wrapper video {
+            width: 100%;
+            display: block;
+            /* Push native controls up so our bar fits below */
+        }
+
+        /* Custom progress overlay bar */
+        .progress-bar-wrap {
+            position: relative;
+            height: 28px;
+            background: #1a1a1a;
+            border-top: 1px solid var(--border);
+            cursor: pointer;
+            overflow: visible;
+        }
+
+        /* Track behind everything */
+        .progress-track {
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 4px;
+            transform: translateY(-50%);
+            background: #333;
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        /* Playhead fill */
+        .progress-fill {
+            height: 100%;
+            width: 0%;
+            background: var(--accent);
+            border-radius: 2px;
+            transition: width 0.1s linear;
+            pointer-events: none;
+        }
+
+        /* Issue segment overlay — positioned absolutely inside .progress-track */
+        .seg {
+            position: absolute;
+            top: 0;
+            height: 100%;
+            opacity: 0.75;
+            border-radius: 1px;
+            pointer-events: none;
+        }
+
+        /* Scrubber thumb */
+        .progress-thumb {
+            position: absolute;
+            top: 50%;
+            width: 12px;
+            height: 12px;
+            background: var(--white);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            box-shadow: 0 0 0 2px rgba(0,0,0,0.4);
+            left: 0%;
+        }
+
+        /* Tooltip */
+        .seg-tooltip {
+            position: absolute;
+            bottom: calc(100% + 8px);
+            transform: translateX(-50%);
+            background: #1e1e1e;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 5px 10px;
+            font-size: 11px;
+            color: var(--text);
+            white-space: nowrap;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.15s;
+            z-index: 10;
+        }
+
+        /* Hit zones on top of everything (pointer-events: all) */
+        .seg-hit {
+            position: absolute;
+            top: 0;
+            height: 100%;
+            cursor: pointer;
+        }
+
+        /* Legend */
+        .legend {
+            display: none;
+            flex-wrap: wrap;
+            gap: 10px;
+            padding: 12px 16px;
+            border-top: 1px solid var(--border);
+        }
+
+        .legend.visible { display: flex; }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            color: var(--muted);
+        }
+
+        .legend-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 2px;
+            flex-shrink: 0;
+        }
+
+        /* ── */
+        .card-footer {
+            border-top: 1px solid var(--border);
+            padding: 16px 36px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .badge {
+            font-size: 10px;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--muted);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .badge::before {
+            content: '';
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--accent);
+            display: inline-block;
+            box-shadow: 0 0 6px var(--accent);
+            animation: pulse 2s ease infinite;
+        }
+
+        /* ── Modal ── */
+        .overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.75);
+            backdrop-filter: blur(6px);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .overlay.open { display: flex; }
+
+        .modal {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            width: 100%;
+            max-width: 480px;
+            animation: modalIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+            overflow: hidden;
+        }
+
+        .modal-header {
+            padding: 28px 28px 0;
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 16px;
+        }
+
+        .modal-eyebrow { font-size: 10px; letter-spacing: 0.3em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+        .modal-title { font-family: 'Bebas Neue', sans-serif; font-size: 36px; line-height: 1; color: var(--white); }
+
+        .close-btn {
+            background: #1e1e1e;
+            border: 1px solid var(--border);
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: var(--muted);
+            transition: color 0.15s, background 0.15s;
+            flex-shrink: 0;
+        }
+        .close-btn:hover { color: var(--text); background: #222; }
+        .close-btn svg { width: 14px; height: 14px; stroke: currentColor; }
+
+        .modal-body { padding: 24px 28px 28px; }
+
+        .issue-list { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+
+        .issue-item {
+            display: flex;
+            gap: 12px;
+            padding: 16px;
+            background: #1a1a1a;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            align-items: flex-start;
+            animation: fadeUp 0.3s ease both;
+        }
+
+        .issue-item:nth-child(1) { animation-delay: 0.05s; }
+        .issue-item:nth-child(2) { animation-delay: 0.1s; }
+        .issue-item:nth-child(3) { animation-delay: 0.15s; }
+        .issue-item:nth-child(4) { animation-delay: 0.2s; }
+
+        .issue-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            margin-top: 6px;
+        }
+
+        .issue-text { font-size: 14px; line-height: 1.5; color: var(--text); }
+
+        .modal-action { margin-top: 20px; }
+
+        .close-modal-btn {
+            width: 100%;
+            padding: 14px;
+            background: transparent;
+            border: 1.5px solid var(--border);
+            border-radius: 10px;
+            color: var(--text);
+            font-family: 'DM Sans', sans-serif;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: border-color 0.2s, color 0.2s;
+        }
+        .close-modal-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(16px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes modalIn {
+            from { opacity: 0; transform: scale(0.94) translateY(20px); }
+            to   { opacity: 1; transform: scale(1) translateY(0); }
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+    </style>
+</head>
+
+<meta charset="UTF-8">
+
+<body>
+
+<div class="header">
+    <div class="header-label">AI-Powered Analysis</div>
+    <h1>FORM<span>CHECK</span></h1>
+    <p>Upload your workout video and get instant feedback on your form and technique.</p>
+</div>
+
+<div class="card">
+    <div class="card-inner">
+
+        <div class="drop-zone" id="dropZone">
+            <input type="file" id="video" accept="video/*" onchange="handleFileSelect(this)">
+            <div class="drop-icon">
+                <svg fill="none" stroke-width="1.5" viewBox="0 0 24 24">
+                    <path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </div>
+            <div class="drop-title">Drop your video here</div>
+            <div class="drop-sub">or <strong>click to browse</strong> - MP4, MOV, AVI</div>
+        </div>
+
+        <div class="file-preview" id="filePreview">
+            <div class="file-thumb">
+                <svg fill="none" stroke-width="2" viewBox="0 0 24 24">
+                    <path d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </div>
+            <div class="file-info">
+                <div class="file-name" id="fileName">—</div>
+                <div class="file-size" id="fileSize">—</div>
+            </div>
+            <button class="remove-file" onclick="removeFile()">
+                <svg fill="none" stroke-width="2" viewBox="0 0 24 24">
+                    <path d="M6 18L18 6M6 6l12 12" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </button>
+        </div>
+
+        <button class="analyze-btn" id="analyzeBtn" onclick="uploadVideo()" disabled>
+            <span class="btn-label">
+                <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23-.693L5 14.5m14.8.8l1.402 1.402c1 1 .03 2.798-1.414 2.798H4.213c-1.444 0-2.414-1.798-1.414-2.798L4.2 15.3" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                ANALYZE FORM
+            </span>
+            <div class="btn-loader"></div>
+            <span class="btn-text-loading">ANALYZING...</span>
+        </button>
+    </div>
+
+    <!-- Video + custom progress bar, hidden until file selected -->
+    <div class="video-wrapper" id="videoWrapper">
+        <video id="videoPlayer" controls></video>
+
+        <!-- Custom progress bar with issue overlays -->
+        <div class="progress-bar-wrap" id="progressBarWrap">
+            <div class="progress-track" id="progressTrack">
+                <!-- Issue segments injected here -->
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <!-- Scrubber thumb -->
+            <div class="progress-thumb" id="progressThumb"></div>
+            <!-- Tooltip -->
+            <div class="seg-tooltip" id="segTooltip"></div>
+        </div>
+    </div>
+
+    <!-- Legend (shown when issues present) -->
+    <div class="legend" id="legend"></div>
+
+    <div class="card-footer">
+        <div class="badge">AI-powered &middot; Real-time analysis</div>
+    </div>
+</div>
+
+<!-- Results Modal -->
+<div class="overlay" id="overlay" onclick="handleOverlayClick(event)">
+    <div class="modal" id="modal">
+        <div class="modal-header">
+            <div class="modal-title-group">
+                <div class="modal-eyebrow">Analysis Complete</div>
+                <div class="modal-title">RESULTS</div>
+            </div>
+            <button class="close-btn" onclick="closeModal()">
+                <svg fill="none" stroke-width="2" viewBox="0 0 24 24">
+                    <path d="M6 18L18 6M6 6l12 12" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div id="resultsContainer"></div>
+            <div class="modal-action">
+                <button class="close-modal-btn" onclick="closeModal()">Done</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let selectedFile = null;
+    let latestIssues = null;
+
+    const ISSUE_COLORS = {
+        "back_rounding": "#ff4d4d",
+        "bar_drift":     "#ffa500",
+        "bad_setup":     "#9b59b6",
+        "knee_cave":     "#00aaff",
+        "chest_drop":    "#ff69b4",
+    };
+    const DEFAULT_COLORS = ["#ff4d4d","#ffa500","#9b59b6","#00aaff","#ff69b4","#22d3ee","#a3e635"];
+    let colorIndex = 0;
+
+    function getColor(key) {
+        if (ISSUE_COLORS[key]) return ISSUE_COLORS[key];
+        if (!ISSUE_COLORS[key]) {
+            ISSUE_COLORS[key] = DEFAULT_COLORS[colorIndex++ % DEFAULT_COLORS.length];
+        }
+        return ISSUE_COLORS[key];
+    }
+
+    // ── Drag & drop ──
+    const dropZone = document.getElementById('dropZone');
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', e => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+        const file = e.dataTransfer.files[0];
+        if (file && file.type.startsWith('video/')) setFile(file);
+    });
+
+    function handleFileSelect(input) {
+        if (input.files[0]) setFile(input.files[0]);
+    }
+
+    function setFile(file) {
+        selectedFile = file;
+        document.getElementById('fileName').textContent = file.name;
+        document.getElementById('fileSize').textContent = formatSize(file.size);
+        document.getElementById('filePreview').classList.add('visible');
+        document.getElementById('analyzeBtn').disabled = false;
+
+        const video = document.getElementById('videoPlayer');
+        video.src = URL.createObjectURL(file);
+        document.getElementById('videoWrapper').style.display = 'block';
+
+        // Wire up playhead tracking
+        video.addEventListener('timeupdate', updatePlayhead);
+        video.addEventListener('loadedmetadata', () => {
+            updatePlayhead();
+            if (latestIssues) renderTimeline(latestIssues);
+        });
+    }
+
+    function removeFile() {
+        selectedFile = null;
+        latestIssues = null;
+        document.getElementById('video').value = '';
+        document.getElementById('filePreview').classList.remove('visible');
+        document.getElementById('analyzeBtn').disabled = true;
+        document.getElementById('videoWrapper').style.display = 'none';
+        document.getElementById('legend').classList.remove('visible');
+        clearTimeline();
+    }
+
+    function formatSize(bytes) {
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    // ── Playhead ──
+    function updatePlayhead() {
+        const video = document.getElementById('videoPlayer');
+        if (!video.duration) return;
+        const pct = (video.currentTime / video.duration) * 100;
+        document.getElementById('progressFill').style.width = pct + '%';
+        document.getElementById('progressThumb').style.left = pct + '%';
+    }
+
+    // ── Scrubbing ──
+    const progressBarWrap = document.getElementById('progressBarWrap');
+    progressBarWrap.addEventListener('click', e => {
+        const video = document.getElementById('videoPlayer');
+        if (!video.duration) return;
+        const rect = progressBarWrap.getBoundingClientRect();
+        const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+        video.currentTime = pct * video.duration;
+    });
+
+    // ── Timeline rendering ──
+    function clearTimeline() {
+        const track = document.getElementById('progressTrack');
+        // Remove all .seg and .seg-hit elements, keep fill
+        Array.from(track.querySelectorAll('.seg, .seg-hit')).forEach(el => el.remove());
+        document.getElementById('legend').innerHTML = '';
+    }
+
+    function renderTimeline(issues) {
+        const video = document.getElementById('videoPlayer');
+        const duration = video.duration;
+        if (!duration) return;
+
+        clearTimeline();
+
+        const track = document.getElementById('progressTrack');
+        const tooltip = document.getElementById('segTooltip');
+        const legend = document.getElementById('legend');
+        const legendItems = {};
+
+        for (const issue in issues) {
+            const color = getColor(issue);
+            const label = issue.replace(/_/g, ' ');
+
+            issues[issue].forEach(([start, end]) => {
+                const leftPct  = (start / duration) * 100;
+                const widthPct = ((end - start) / duration) * 100;
+
+                // Colored segment (visual, behind fill)
+                const seg = document.createElement('div');
+                seg.className = 'seg';
+                seg.style.left    = leftPct + '%';
+                seg.style.width   = Math.max(widthPct, 0.4) + '%';
+                seg.style.background = color;
+                track.insertBefore(seg, document.getElementById('progressFill'));
+
+                // Hit zone (on top, for hover + click)
+                const hit = document.createElement('div');
+                hit.className = 'seg-hit';
+                hit.style.cssText = `left:${leftPct}%; width:${Math.max(widthPct, 2)}%; position:absolute; top:0; height:100%; cursor:pointer;`;
+
+                hit.addEventListener('mouseenter', e => {
+                    const rect = progressBarWrap.getBoundingClientRect();
+                    const midX = rect.left + (leftPct + widthPct / 2) / 100 * rect.width;
+                    tooltip.textContent = label;
+                    tooltip.style.left = ((leftPct + widthPct / 2) + '%');
+                    tooltip.style.opacity = '1';
+                });
+                hit.addEventListener('mouseleave', () => {
+                    tooltip.style.opacity = '0';
+                });
+                hit.addEventListener('click', e => {
+                    e.stopPropagation();
+                    video.currentTime = start;
+                    video.play();
+                });
+
+                track.appendChild(hit);
+            });
+
+            // Legend entry
+            if (!legendItems[issue]) {
+                legendItems[issue] = true;
+                const item = document.createElement('div');
+                item.className = 'legend-item';
+                item.innerHTML = `<div class="legend-dot" style="background:${color}"></div><span>${label}</span>`;
+                legend.appendChild(item);
+            }
+        }
+
+        legend.classList.add('visible');
+    }
+
+    // ── API call ──
+    async function uploadVideo() {
+        if (!selectedFile) return;
+
+        const btn = document.getElementById('analyzeBtn');
+        btn.disabled = true;
+        btn.classList.add('loading');
+
+        try {
+            const formData = new FormData();
+            formData.append("file", selectedFile);
+
+            const response = await fetch("/analyze", {
+                method: "POST",
+                body: formData
+            });
+
+            const data = await response.json();
+            latestIssues = data.issues;
+
+            const video = document.getElementById('videoPlayer');
+            if (video.readyState >= 1) {
+                renderTimeline(latestIssues);
+            } else {
+                video.addEventListener('loadedmetadata', () => renderTimeline(latestIssues), { once: true });
+            }
+
+            showModal(latestIssues);
+        } catch (err) {
+            showModal(["Could not connect to the server. Please try again."]);
+        } finally {
+            btn.classList.remove('loading');
+            btn.disabled = false;
+        }
+    }
+
+    // ── Modal ──
+    function showModal(issues) {
+        const container = document.getElementById('resultsContainer');
+        container.innerHTML = '';
+
+        const isSegmentFormat = typeof issues === "object" && !Array.isArray(issues);
+
+        if (!isSegmentFormat) {
+            const list = Array.isArray(issues) ? issues : [];
+            if (list.length === 0) {
+                container.innerHTML = `<div style="padding:20px;background:rgba(200,245,53,.07);border:1px solid rgba(200,245,53,.2);border-radius:12px;font-weight:500;">Perfect form — no issues detected!</div>`;
+            } else {
+                const ul = document.createElement('ul');
+                ul.className = 'issue-list';
+                list.forEach(issue => {
+                    ul.innerHTML += `<li class="issue-item"><div class="issue-dot" style="background:#ff6b35"></div><div class="issue-text">${issue}</div></li>`;
+                });
+                container.appendChild(ul);
+            }
+        } else {
+            const ul = document.createElement('ul');
+            ul.className = 'issue-list';
+
+            for (const issue in issues) {
+                const color = getColor(issue);
+                const label = issue.replace(/_/g, ' ');
+                const segments = issues[issue];
+                const times = segments.map(([s, e]) => `${s.toFixed(1)}s - ${e.toFixed(1)}s`).join(', ');
+                ul.innerHTML += `
+                    <li class="issue-item">
+                        <div class="issue-dot" style="background:${color}"></div>
+                        <div class="issue-text">
+                            <strong style="text-transform:capitalize">${label}</strong>
+                            <div style="font-size:12px;color:var(--muted);margin-top:3px">${times}</div>
+                        </div>
+                    </li>`;
+            }
+
+            container.appendChild(ul);
+        }
+
+        document.getElementById('overlay').classList.add('open');
+    }
+
+    function closeModal() { document.getElementById('overlay').classList.remove('open'); }
+    function handleOverlayClick(e) { if (e.target === document.getElementById('overlay')) closeModal(); }
+</script>
+</body>
+</html>
