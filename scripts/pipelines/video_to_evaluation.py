@@ -6,9 +6,11 @@ from scripts.frame import Frame
 from scripts.extractions.bicep_curl import BicepCurlExtractor
 from scripts.extractions.bench_press import BenchPressExtractor
 from scripts.extractions.deadlift import DeadliftExtractor
+from scripts.extractions.lat_pulldown import LatPulldownExtractor
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 from scripts.pipelines.npz_to_pandas import frames_to_numpy
+from scripts.evaluator import OverallEvaluator
 
 
 # -------------------------------------------------------------
@@ -47,7 +49,8 @@ def select_extractor(video_path):
     extractor_types = {
         "barbell biceps curl": BicepCurlExtractor(),
         "bench press": BenchPressExtractor(),
-        "deadlift": DeadliftExtractor()
+        "deadlift": DeadliftExtractor(),
+        "lat pulldown": LatPulldownExtractor()
     }
 
     for exercise in extractor_types:
@@ -217,12 +220,12 @@ def compute_motion_metrics(frames, extractor, fps):
     for frame in frames:
         extractor.calculate_additional_features(frame)
         extractor.calculate_phase(frame)
-        print(extractor.evaluate_form(frame))
-        # extractor.evaluate_form(frame)
+        issues = extractor.evaluate_form(frame)
+        frame.issues = issues
 
     return frames
 
-# -------------------------------------------------------------
+# -------------------------------------------------------------v
 # Save frames to compressed NPZ
 # -------------------------------------------------------------
 def save_npz(frames, output_path):
@@ -246,7 +249,7 @@ def save_npz(frames, output_path):
 # -------------------------------------------------------------
 # Main pipeline
 # -------------------------------------------------------------
-def video_to_npz(video_path, output_path):
+def evaluation_pipeline(video_path):
     """
     Full processing pipeline:
 
@@ -265,7 +268,9 @@ def video_to_npz(video_path, output_path):
     # 4 Compute motion metrics
     frames = compute_motion_metrics(frames, extractor, fps)
 
-    # 5 Save processed data
-    save_npz(frames, output_path)
+    # 5 Evaluate
+    evaluator = OverallEvaluator(frames)
 
-    return frames
+    results = evaluator.evaluate_all_issues()
+
+    return results

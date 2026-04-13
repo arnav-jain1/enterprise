@@ -158,11 +158,6 @@ class DeadliftExtractor(BaseExtractor):
         if frame.features.get("alignment_error", 0.0) > 0.08:
             issues.append("bad_setup")
 
-        print("Left Knee:", frame.angles["left_knee"],
-              "Right Knee:", frame.angles["right_knee"], 
-              "Back:", frame.features["back_angle"],
-              "Hip:", frame.motion["hip"],
-              "Shoulder:", frame.motion["shoulder"])
         frame.features["form_issues"] = issues
 
         return issues

@@ -177,6 +177,5 @@ class BenchPressExtractor(BaseExtractor):
         if right_drift > 0.03 or left_drift > 0.03:
             issues.append("bar_path_drift")
 
-        print(self.calculate_symmetry(frame.landmarks, 16, 15))
         frame.features["form_issues"] = issues
         return issues

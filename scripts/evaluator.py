@@ -49,7 +49,59 @@ class OverallEvaluator:
                 return True
 
         return False
+    
+    def extract_issue_segments(self, issue_key, min_length=5):
+        """
+        Returns list of (start_frame, end_frame) where issue occurs
+        """
 
+        flags = [
+            issue_key in getattr(frame, "issues", [])
+            for frame in self.frames
+        ]
+
+        segments = []
+        start = None
+
+        for i, flag in enumerate(flags):
+            if flag and start is None:
+                start = i
+            elif not flag and start is not None:
+                if i - start >= min_length:
+                    segments.append((start, i - 1))
+                start = None
+
+        # handle case where issue continues till end
+        if start is not None and len(flags) - start >= min_length:
+            segments.append((start, len(flags) - 1))
+
+        return segments
+    
+    
+    def evaluate_all_issues(self, fps=30):
+        """
+        Return issue segments in seconds for UI
+        """
+
+        issue_types = set()
+
+        for frame in self.frames:
+            for issue in getattr(frame, "issues", []):
+                issue_types.add(issue)
+
+        results = {}
+
+        for issue in issue_types:
+            segments = self.extract_issue_segments(issue)
+
+            if segments:
+                # convert frames → seconds
+                results[issue] = [
+                    (start / fps, end / fps)
+                    for start, end in segments
+                ]
+
+        return results
     # --------------------------------------------------
     # 2. COUNT LONGEST STREAK (optional stronger check)
     # --------------------------------------------------
@@ -74,7 +126,7 @@ class OverallEvaluator:
     # --------------------------------------------------
     # 3. PARABOLA DETECTION
     # --------------------------------------------------
-    def detect_parabolic_motion_robust(values, smooth=True):
+    def detect_parabolic_motion_robust(self, values, smooth=True):
         """
         Robust parabola detection using smoothing + polynomial fit.
 

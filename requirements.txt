@@ -4,3 +4,7 @@ scipy
 opencv-python
 matplotlib
 pandas
+fastapi
+uvicorn
+python-multipart
+jinja2
