@@ -8,10 +8,9 @@ class DeadliftExtractor(BaseExtractor):
     def calculate_angles(self, landmarks):
         angles = {}
 
-        # Core joints for deadlift
-        angles.update(self.calculate_torso_angles(landmarks, True))   # back angle
-        angles.update(self.calculate_hip_angles(landmarks))     # YOU NEED TO ADD THIS (see below)
-        angles.update(self.calculate_knee_angles(landmarks))    # YOU NEED TO ADD THIS
+        angles.update(self.calculate_torso_angles(landmarks, True))
+        angles.update(self.calculate_hip_angles(landmarks))
+        angles.update(self.calculate_knee_angles(landmarks))
 
         return angles
 
