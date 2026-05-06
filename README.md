@@ -1,11 +1,3 @@
-# Arnav Tasks
-
-- Set default branch to main
-- delete arnav_is_chud branch
-- dont fuck up meeting with sutley
-
-# Sutley Meeting Notes
-    
 ## Struggles
 - mediapipe -> frame interpolation (biceps ok)
 - back arch
